@@ -36,6 +36,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan context manager for startup and shutdown tasks."""
     await init_db()
 
+    # Automatically seed initial admin and fleet data if not already seeded
+    try:
+        from app.database.seed import seed
+        await seed()
+    except Exception as e:
+        print(f"[Database Seed Info] {e}")
+
     # Startup: start background telemetry simulation
     try:
         telemetry_simulator.start(async_session_factory)

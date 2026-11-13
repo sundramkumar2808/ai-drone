@@ -17,3 +17,8 @@ if os.path.exists(env_path):
         pass
 
 from app.main import app  # noqa: E402, F401
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8001))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
