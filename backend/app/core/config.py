@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/drone_fleet"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./drone_fleet.db"
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
