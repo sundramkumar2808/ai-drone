@@ -1,0 +1,132 @@
+{
+  "info": {
+    "name": "AI Drone Fleet Management Platform API",
+    "description": "Enterprise REST APIs & WebSocket for Autonomous Drone Fleet Management.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Pilot John\",\n  \"email\": \"pilot.john@dronefleet.ai\",\n  \"phone\": \"+1-555-0199\",\n  \"password\": \"PilotPass123!\",\n  \"confirm_password\": \"PilotPass123!\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/register", "host": ["{{baseUrl}}"], "path": ["api", "auth", "register"] }
+          }
+        },
+        {
+          "name": "Login (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@dronefleet.ai\",\n  \"password\": \"AdminPassword123!\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] }
+          }
+        },
+        {
+          "name": "Get Current User Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/me", "host": ["{{baseUrl}}"], "path": ["api", "auth", "me"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Drones",
+      "item": [
+        {
+          "name": "List All Drones",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drones?limit=20", "host": ["{{baseUrl}}"], "path": ["api", "drones"], "query": [{ "key": "limit", "value": "20" }] }
+          }
+        },
+        {
+          "name": "Create New Drone",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"drone_name\": \"Raven Tactical Recon\",\n  \"model\": \"Mavic 3 Enterprise\",\n  \"manufacturer\": \"DJI\",\n  \"serial_number\": \"DJI-M3E-99120\",\n  \"battery_percentage\": 100,\n  \"status\": \"available\",\n  \"location\": \"Hub Beta\",\n  \"max_flight_time\": 42,\n  \"max_payload\": 1.5\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/drones", "host": ["{{baseUrl}}"], "path": ["api", "drones"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Missions",
+      "item": [
+        {
+          "name": "List Missions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/missions", "host": ["{{baseUrl}}"], "path": ["api", "missions"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Telemetry",
+      "item": [
+        {
+          "name": "Get Fleet Latest Telemetry",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{baseUrl}}/api/telemetry", "host": ["{{baseUrl}}"], "path": ["api", "telemetry"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "AI Assistant",
+      "item": [
+        {
+          "name": "Chat with Drone AI",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Which drones currently have low battery levels?\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/ai/chat", "host": ["{{baseUrl}}"], "path": ["api", "ai", "chat"] }
+          }
+        }
+      ]
+    }
+  ]
+}
