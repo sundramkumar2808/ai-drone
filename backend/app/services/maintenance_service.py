@@ -1,11 +1,8 @@
-"""Maintenance service module."""
+"""Maintenance service module using MongoDB."""
 
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List, Tuple
-
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional, List, Tuple, Any
 
 from app.models.maintenance import MaintenanceRecord
 from app.models.drone import Drone
@@ -13,112 +10,87 @@ from app.schemas.maintenance import MaintenanceCreate, MaintenanceUpdate
 
 
 async def get_maintenance_records(
-    db: AsyncSession,
-    drone_id: Optional[uuid.UUID] = None,
+    db: Any,
+    drone_id: Any = None,
     status: Optional[str] = None,
     skip: int = 0,
     limit: int = 50,
 ) -> Tuple[List[MaintenanceRecord], int]:
     """List maintenance records with optional filters."""
-    query = select(MaintenanceRecord)
-    count_query = select(func.count(MaintenanceRecord.id))
-
+    filter_dict: dict = {}
     if drone_id:
-        query = query.where(MaintenanceRecord.drone_id == drone_id)
-        count_query = count_query.where(MaintenanceRecord.drone_id == drone_id)
-
+        filter_dict["drone_id"] = str(drone_id)
     if status:
-        query = query.where(MaintenanceRecord.status == status)
-        count_query = count_query.where(MaintenanceRecord.status == status)
+        filter_dict["status"] = status
 
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-
-    query = (
-        query.offset(skip)
-        .limit(limit)
-        .order_by(MaintenanceRecord.created_at.desc())
-    )
-    result = await db.execute(query)
-    records = result.scalars().all()
-
-    return list(records), total
+    total = await db.maintenance.count_documents(filter_dict)
+    cursor = db.maintenance.find(filter_dict).sort("created_at", -1).skip(skip).limit(limit)
+    docs = await cursor.to_list(length=limit)
+    return [MaintenanceRecord(d) for d in docs], total
 
 
 async def create_maintenance(
-    db: AsyncSession, data: MaintenanceCreate
+    db: Any, data: MaintenanceCreate
 ) -> MaintenanceRecord:
     """Create a new maintenance record."""
-    record = MaintenanceRecord(
-        id=uuid.uuid4(),
-        drone_id=data.drone_id,
-        category=data.category,
-        description=data.description,
-        status="scheduled",
-        scheduled_date=data.scheduled_date or datetime.now(timezone.utc),
-        notes=data.notes,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    db.add(record)
+    now = datetime.now(timezone.utc)
+    record_doc = {
+        "id": str(uuid.uuid4()),
+        "drone_id": str(data.drone_id),
+        "category": data.category,
+        "description": data.description,
+        "status": "scheduled",
+        "scheduled_date": data.scheduled_date or now,
+        "completed_date": None,
+        "notes": data.notes,
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.maintenance.insert_one(record_doc)
 
     # Set drone status to maintenance
-    drone_res = await db.execute(select(Drone).where(Drone.id == data.drone_id))
-    drone = drone_res.scalar_one_or_none()
-    if drone:
-        drone.status = "maintenance"
-        drone.updated_at = datetime.now(timezone.utc)
-
-    await db.commit()
-    await db.refresh(record)
-    return record
+    await db.drones.update_one(
+        {"id": str(data.drone_id)},
+        {"$set": {"status": "maintenance", "updated_at": now}}
+    )
+    return MaintenanceRecord(record_doc)
 
 
 async def update_maintenance(
-    db: AsyncSession, record_id: uuid.UUID, data: MaintenanceUpdate
+    db: Any, record_id: Any, data: MaintenanceUpdate
 ) -> Optional[MaintenanceRecord]:
     """Update an existing maintenance record."""
-    result = await db.execute(
-        select(MaintenanceRecord).where(MaintenanceRecord.id == record_id)
-    )
-    record = result.scalar_one_or_none()
-    if not record:
+    doc = await db.maintenance.find_one({"id": str(record_id)})
+    if not doc:
         return None
 
     update_dict = data.model_dump(exclude_unset=True)
-    for field, value in update_dict.items():
-        setattr(record, field, value)
+    now = datetime.now(timezone.utc)
+    update_dict["updated_at"] = now
 
     if data.status == "completed":
-        record.completed_date = data.completed_date or datetime.now(timezone.utc)
+        update_dict["completed_date"] = data.completed_date or now
         # Restore drone status to available
-        drone_res = await db.execute(select(Drone).where(Drone.id == record.drone_id))
-        drone = drone_res.scalar_one_or_none()
-        if drone and drone.status == "maintenance":
-            drone.status = "available"
-            drone.updated_at = datetime.now(timezone.utc)
+        await db.drones.update_one(
+            {"id": str(doc.get("drone_id"))},
+            {"$set": {"status": "available", "updated_at": now}}
+        )
 
-    record.updated_at = datetime.now(timezone.utc)
-    await db.commit()
-    await db.refresh(record)
-    return record
+    await db.maintenance.update_one({"id": str(record_id)}, {"$set": update_dict})
+    doc.update(update_dict)
+    return MaintenanceRecord(doc)
 
 
 async def get_upcoming_maintenance(
-    db: AsyncSession, days: int = 7
+    db: Any, days: int = 7
 ) -> List[MaintenanceRecord]:
     """Get maintenance records scheduled within the next N days."""
     now = datetime.now(timezone.utc)
     future = now + timedelta(days=days)
-
-    query = (
-        select(MaintenanceRecord)
-        .where(
-            MaintenanceRecord.status == "scheduled",
-            MaintenanceRecord.scheduled_date >= now,
-            MaintenanceRecord.scheduled_date <= future,
-        )
-        .order_by(MaintenanceRecord.scheduled_date.asc())
-    )
-    result = await db.execute(query)
-    return list(result.scalars().all())
+    filter_dict = {
+        "status": "scheduled",
+        "scheduled_date": {"$gte": now, "$lte": future}
+    }
+    cursor = db.maintenance.find(filter_dict).sort("scheduled_date", 1)
+    docs = await cursor.to_list(length=100)
+    return [MaintenanceRecord(d) for d in docs]

@@ -4,7 +4,6 @@ from typing import Any, List, Optional
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, RoleChecker
 from app.database.session import get_db
@@ -28,7 +27,7 @@ async def list_maintenance_records(
     limit: int = Query(50, ge=1, le=100),
     drone_id: Optional[uuid.UUID] = Query(None),
     status: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """List maintenance records with filtering and pagination."""
@@ -44,7 +43,7 @@ async def list_maintenance_records(
 @router.get("/upcoming", response_model=List[MaintenanceResponse])
 async def get_upcoming_maintenance(
     days: int = Query(14, ge=1, le=90),
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Get scheduled maintenance events due in the next N days."""
@@ -54,7 +53,7 @@ async def get_upcoming_maintenance(
 @router.post("", response_model=MaintenanceResponse, status_code=status.HTTP_201_CREATED)
 async def create_maintenance_record(
     data: MaintenanceCreate,
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(maintenance_roles),
 ) -> Any:
     """Schedule a new maintenance or inspection task."""
@@ -65,7 +64,7 @@ async def create_maintenance_record(
 async def update_maintenance_record(
     record_id: uuid.UUID,
     data: MaintenanceUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(maintenance_roles),
 ) -> Any:
     """Update maintenance status, completed date, or cost."""

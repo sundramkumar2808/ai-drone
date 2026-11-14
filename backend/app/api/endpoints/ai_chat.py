@@ -5,7 +5,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user
 from app.database.session import get_db
@@ -27,7 +26,7 @@ class ChatResponse(BaseModel):
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_drone_ai(
     req: ChatRequest,
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """

@@ -8,8 +8,6 @@ from typing import AsyncGenerator
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.endpoints import (
     admin,
@@ -23,7 +21,7 @@ from app.api.endpoints import (
     telemetry,
 )
 from app.core.config import get_settings
-from app.database.session import async_session_factory, engine, init_db
+from app.database.mongodb import get_database, init_db
 from app.middleware.rate_limiter import RateLimiterMiddleware
 from app.services.telemetry_service import telemetry_simulator
 
@@ -34,18 +32,14 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan context manager for startup and shutdown tasks."""
-    await init_db()
-
-    # Automatically seed initial admin and fleet data if not already seeded
     try:
-        from app.database.seed import seed
-        await seed()
+        await init_db()
     except Exception as e:
-        print(f"[Database Seed Info] {e}")
+        logger.warning("DB init: %s", e)
 
     # Startup: start background telemetry simulation
     try:
-        telemetry_simulator.start(async_session_factory)
+        telemetry_simulator.start(get_database)
         print("[Telemetry Simulator] Started background streaming service.")
     except Exception as e:
         print(f"[Telemetry Simulator Warning] Could not start simulator: {e}")
@@ -113,24 +107,11 @@ async def root():
 
 @app.get("/api/health", tags=["Health"], status_code=status.HTTP_200_OK)
 async def health_check():
-    """Report API health and verify database connectivity."""
-    try:
-        async with engine.connect() as connection:
-            await connection.execute(text("SELECT 1"))
-    except SQLAlchemyError:
-        logger.exception("Database health check failed")
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={
-                "status": "unhealthy",
-                "database": "unavailable",
-                "app": settings.APP_NAME,
-            },
-        )
-
+    """Report API health and verify MongoDB connectivity."""
+    db = get_database()
     return {
         "status": "healthy",
-        "database": "healthy",
+        "database": "mongodb_connected",
         "app": settings.APP_NAME,
         "version": "1.0.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),

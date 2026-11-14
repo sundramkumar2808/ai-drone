@@ -5,7 +5,6 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user
 from app.core.config import get_settings
@@ -28,7 +27,7 @@ settings = get_settings()
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(
     user_data: UserCreate,
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
 ) -> Any:
     """Register a new user."""
     try:
@@ -44,7 +43,7 @@ async def register(
 @router.post("/login", response_model=Token)
 async def login(
     login_data: UserLogin,
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
 ) -> Any:
     """Log in with email and password to receive access & refresh tokens."""
     user = await auth_service.authenticate_user(db, login_data.email, login_data.password)
@@ -81,7 +80,7 @@ async def get_current_user_profile(
 @router.post("/forgot-password")
 async def forgot_password(
     data: ForgotPassword,
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
 ) -> dict:
     """Initiate password reset flow."""
     token = auth_service.generate_password_reset_token(data.email)
@@ -94,7 +93,7 @@ async def forgot_password(
 @router.post("/reset-password")
 async def reset_password(
     data: ResetPassword,
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
 ) -> dict:
     """Reset password using token."""
     success = await auth_service.reset_password(db, data.token, data.new_password)

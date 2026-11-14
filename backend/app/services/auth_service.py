@@ -1,12 +1,10 @@
-"""Authentication service module."""
+"""Authentication service module using MongoDB."""
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, Any
 
 from jose import jwt, JWTError
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.security import (
@@ -16,48 +14,47 @@ from app.core.security import (
     get_password_hash,
 )
 from app.models.user import User
-from app.models.alert import OAuthAccount
 from app.schemas.auth import UserCreate, TokenResponse
-
 
 settings = get_settings()
 
 
-async def register_user(db: AsyncSession, user_data: UserCreate) -> User:
-    """Register a new user with email and password."""
-    result = await db.execute(select(User).where(User.email == user_data.email))
-    existing_user = result.scalar_one_or_none()
+async def register_user(db: Any, user_data: UserCreate) -> User:
+    """Register a new user with email and password in MongoDB."""
+    existing_user = await db.users.find_one({"email": user_data.email})
     if existing_user:
         raise ValueError("A user with this email already exists")
 
     hashed_password = get_password_hash(user_data.password)
-    user = User(
-        id=uuid.uuid4(),
-        email=user_data.email,
-        full_name=user_data.full_name,
-        hashed_password=hashed_password,
-        role=user_data.role if hasattr(user_data, "role") and user_data.role else "viewer",
-        is_active=True,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    return user
+    user_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+
+    user_doc = {
+        "id": user_id,
+        "email": user_data.email,
+        "full_name": user_data.full_name,
+        "phone": getattr(user_data, "phone", None),
+        "hashed_password": hashed_password,
+        "role": getattr(user_data, "role", "viewer") or "viewer",
+        "is_active": True,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    await db.users.insert_one(user_doc)
+    return User(user_doc)
 
 
 async def authenticate_user(
-    db: AsyncSession, email: str, password: str
+    db: Any, email: str, password: str
 ) -> Optional[User]:
     """Verify user credentials and return the user if valid."""
-    result = await db.execute(select(User).where(User.email == email))
-    user = result.scalar_one_or_none()
-    if not user:
+    user_doc = await db.users.find_one({"email": email})
+    if not user_doc:
         return None
-    if not verify_password(password, user.hashed_password):
+    if not verify_password(password, user_doc.get("hashed_password", "")):
         return None
-    return user
+    return User(user_doc)
 
 
 def create_tokens(user: User) -> TokenResponse:
@@ -72,74 +69,14 @@ def create_tokens(user: User) -> TokenResponse:
     )
 
 
-async def get_or_create_oauth_user(
-    db: AsyncSession,
-    provider: str,
-    provider_account_id: str,
-    email: str,
-    full_name: Optional[str] = None,
-) -> User:
-    """Handle OAuth login/signup. Links OAuth account to existing user or creates a new one."""
-    # Check if OAuth account already linked
-    result = await db.execute(
-        select(OAuthAccount).where(
-            OAuthAccount.provider == provider,
-            OAuthAccount.provider_account_id == provider_account_id,
-        )
-    )
-    oauth_account = result.scalar_one_or_none()
-
-    if oauth_account:
-        user_result = await db.execute(
-            select(User).where(User.id == oauth_account.user_id)
-        )
-        user = user_result.scalar_one_or_none()
-        if user:
-            return user
-
-    # Check if a user with this email exists
-    result = await db.execute(select(User).where(User.email == email))
-    user = result.scalar_one_or_none()
-
-    if not user:
-        user = User(
-            id=uuid.uuid4(),
-            email=email,
-            full_name=full_name or email.split("@")[0],
-            hashed_password="",  # OAuth users don't have a password
-            role="viewer",
-            is_active=True,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-        )
-        db.add(user)
-        await db.flush()
-
-    # Link OAuth account
-    new_oauth = OAuthAccount(
-        id=uuid.uuid4(),
-        user_id=user.id,
-        provider=provider,
-        provider_account_id=provider_account_id,
-        created_at=datetime.now(timezone.utc),
-    )
-    db.add(new_oauth)
-    await db.commit()
-    await db.refresh(user)
-    return user
-
-
 def generate_password_reset_token(email: str) -> str:
     """Create a time-limited JWT reset token for the given email."""
     expires = datetime.now(timezone.utc) + timedelta(hours=1)
     payload = {"sub": email, "exp": expires, "type": "password_reset"}
-    token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return token
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-async def reset_password(
-    db: AsyncSession, token: str, new_password: str
-) -> bool:
+async def reset_password(db: Any, token: str, new_password: str) -> bool:
     """Reset the user's password using a valid reset token."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
@@ -151,12 +88,14 @@ async def reset_password(
     except JWTError as exc:
         raise ValueError(f"Invalid or expired reset token: {exc}")
 
-    result = await db.execute(select(User).where(User.email == email))
-    user = result.scalar_one_or_none()
-    if not user:
+    user_doc = await db.users.find_one({"email": email})
+    if not user_doc:
         raise ValueError("User not found")
 
-    user.hashed_password = get_password_hash(new_password)
-    user.updated_at = datetime.now(timezone.utc)
-    await db.commit()
+    new_hash = get_password_hash(new_password)
+    now = datetime.now(timezone.utc)
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"hashed_password": new_hash, "updated_at": now}},
+    )
     return True

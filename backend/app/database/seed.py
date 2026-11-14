@@ -1,422 +1,316 @@
-"""Database seeder with realistic drone fleet management initial data."""
+"""Database seeder with realistic drone fleet initial data for MongoDB."""
 
 import asyncio
 from datetime import datetime, timezone, timedelta
 import uuid
 
-from sqlalchemy import select
 from app.core.security import get_password_hash
-from app.database.session import async_session_factory, init_db
-from app.models.user import User
-from app.models.drone import Drone
-from app.models.mission import Mission
-from app.models.maintenance import MaintenanceRecord
-from app.models.alert import Alert, Notification, ActivityLog
+from app.database.mongodb import get_database
 
 
 async def seed():
-    """Seed the database with enterprise-ready drone fleet data."""
-    await init_db()
+    """Seed MongoDB with enterprise-ready drone fleet data."""
+    db = get_database()
 
-    async with async_session_factory() as db:
-        # Check if already seeded
-        result = await db.execute(select(User).where(User.email == "admin@dronefleet.ai"))
-        if result.scalar_one_or_none():
-            print("[Database Seed] Already seeded. Skipping.")
-            return
+    # Check if already seeded
+    existing_admin = await db.users.find_one({"email": "admin@dronefleet.ai"})
+    if existing_admin:
+        return
 
-        print("[Database Seed] Seeding demo users...")
-        users_data = [
-            {
-                "full_name": "Chief Administrator",
-                "email": "admin@dronefleet.ai",
-                "phone": "+1-555-0199",
-                "password": "AdminPassword123!",
-                "role": "admin",
-            },
-            {
-                "full_name": "Sarah Connor (Fleet Manager)",
-                "email": "manager@dronefleet.ai",
-                "phone": "+1-555-0142",
-                "password": "ManagerPassword123!",
-                "role": "fleet_manager",
-            },
-            {
-                "full_name": "Marcus Vance (Drone Pilot)",
-                "email": "operator@dronefleet.ai",
-                "phone": "+1-555-0177",
-                "password": "OperatorPassword123!",
-                "role": "operator",
-            },
-            {
-                "full_name": "Elena Rostova (Flight Analyst)",
-                "email": "viewer@dronefleet.ai",
-                "phone": "+1-555-0123",
-                "password": "ViewerPassword123!",
-                "role": "viewer",
-            },
-        ]
+    print("[MongoDB Seed] Seeding demo users...")
+    now = datetime.now(timezone.utc)
 
-        user_objects = {}
-        for u in users_data:
-            user = User(
-                id=uuid.uuid4(),
-                full_name=u["full_name"],
-                email=u["email"],
-                phone=u["phone"],
-                hashed_password=get_password_hash(u["password"]),
-                role=u["role"],
-                is_active=True,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-            )
-            db.add(user)
-            user_objects[u["role"]] = user
+    users_data = [
+        {
+            "id": str(uuid.uuid4()),
+            "full_name": "Chief Administrator",
+            "email": "admin@dronefleet.ai",
+            "phone": "+1-555-0199",
+            "hashed_password": get_password_hash("AdminPassword123!"),
+            "role": "admin",
+            "is_active": True,
+            "created_at": now - timedelta(days=90),
+            "updated_at": now,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "full_name": "Sarah Connor (Fleet Manager)",
+            "email": "manager@dronefleet.ai",
+            "phone": "+1-555-0142",
+            "hashed_password": get_password_hash("ManagerPassword123!"),
+            "role": "fleet_manager",
+            "is_active": True,
+            "created_at": now - timedelta(days=60),
+            "updated_at": now,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "full_name": "Marcus Vance (Drone Pilot)",
+            "email": "operator@dronefleet.ai",
+            "phone": "+1-555-0177",
+            "hashed_password": get_password_hash("OperatorPassword123!"),
+            "role": "operator",
+            "is_active": True,
+            "created_at": now - timedelta(days=45),
+            "updated_at": now,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "full_name": "Elena Rostova (Flight Analyst)",
+            "email": "viewer@dronefleet.ai",
+            "phone": "+1-555-0123",
+            "hashed_password": get_password_hash("ViewerPassword123!"),
+            "role": "viewer",
+            "is_active": True,
+            "created_at": now - timedelta(days=30),
+            "updated_at": now,
+        },
+    ]
 
-        await db.flush()
-        admin_id = user_objects["admin"].id
-        operator_id = user_objects["operator"].id
+    for u in users_data:
+        await db.users.insert_one(u)
 
-        print("[Database Seed] Seeding drones...")
-        drones_data = [
-            {
-                "drone_name": "SkyGuardian Alpha-1",
-                "model": "Matrice 300 RTK",
-                "manufacturer": "DJI",
-                "serial_number": "DJI-M300-88410",
-                "battery_percentage": 94.0,
-                "status": "in_flight",
-                "location": "Sector 4 Industrial Park",
-                "latitude": 37.7749,
-                "longitude": -122.4194,
-                "total_flight_hours": 142.5,
-                "max_flight_time": 55.0,
-                "max_payload": 2.7,
-            },
-            {
-                "drone_name": "AeroScan Mapper-X",
-                "model": "WingtraOne GEN II",
-                "manufacturer": "Wingtra",
-                "serial_number": "WT-GEN2-40192",
-                "battery_percentage": 88.0,
-                "status": "in_flight",
-                "location": "Central Valley Farmlands",
-                "latitude": 37.7833,
-                "longitude": -122.4167,
-                "total_flight_hours": 98.2,
-                "max_flight_time": 59.0,
-                "max_payload": 0.8,
-            },
-            {
-                "drone_name": "Falcon Scout-4",
-                "model": "EVO II Dual 640T",
-                "manufacturer": "Autel Robotics",
-                "serial_number": "AUT-EVO2-11029",
-                "battery_percentage": 100.0,
-                "status": "available",
-                "location": "North Hangar Bay 1",
-                "latitude": 37.7690,
-                "longitude": -122.4467,
-                "total_flight_hours": 64.0,
-                "max_flight_time": 40.0,
-                "max_payload": 1.2,
-            },
-            {
-                "drone_name": "CyberHawk Pro-2",
-                "model": "Skydio X2E",
-                "manufacturer": "Skydio",
-                "serial_number": "SKY-X2E-99321",
-                "battery_percentage": 78.0,
-                "status": "available",
-                "location": "Main Dispatch Hub",
-                "latitude": 37.7550,
-                "longitude": -122.4200,
-                "total_flight_hours": 115.8,
-                "max_flight_time": 35.0,
-                "max_payload": 1.0,
-            },
-            {
-                "drone_name": "HeavyLift Cargo-01",
-                "model": "Astro Industrial",
-                "manufacturer": "Freefly Systems",
-                "serial_number": "FF-ASTRO-55201",
-                "battery_percentage": 45.0,
-                "status": "charging",
-                "location": "Docking Bay 3",
-                "latitude": 37.7600,
-                "longitude": -122.4100,
-                "total_flight_hours": 210.4,
-                "max_flight_time": 38.0,
-                "max_payload": 5.5,
-            },
-            {
-                "drone_name": "Vanguard Patrol-7",
-                "model": "Anafi USA GOV",
-                "manufacturer": "Parrot",
-                "serial_number": "PAR-ANA-77291",
-                "battery_percentage": 18.0,
-                "status": "available",
-                "location": "South Perimeter Depot",
-                "latitude": 37.7400,
-                "longitude": -122.4300,
-                "total_flight_hours": 87.5,
-                "max_flight_time": 32.0,
-                "max_payload": 0.5,
-            },
-            {
-                "drone_name": "TerraSurveyor Delta",
-                "model": "eBee X",
-                "manufacturer": "senseFly",
-                "serial_number": "SF-EBEE-33411",
-                "battery_percentage": 100.0,
-                "status": "maintenance",
-                "location": "Tech Lab Diagnostics",
-                "latitude": 37.7650,
-                "longitude": -122.4050,
-                "total_flight_hours": 178.9,
-                "max_flight_time": 90.0,
-                "max_payload": 3.0,
-            },
-            {
-                "drone_name": "Ghost Recon-9",
-                "model": "Golden Eagle",
-                "manufacturer": "Teal Drones",
-                "serial_number": "TL-GE-66299",
-                "battery_percentage": 0.0,
-                "status": "offline",
-                "location": "Maintenance Depot B",
-                "latitude": 37.7350,
-                "longitude": -122.4500,
-                "total_flight_hours": 52.3,
-                "max_flight_time": 30.0,
-                "max_payload": 0.9,
-            },
-        ]
+    admin_id = users_data[0]["id"]
+    operator_id = users_data[2]["id"]
 
-        drone_objects = []
-        for d in drones_data:
-            drone = Drone(
-                id=uuid.uuid4(),
-                drone_name=d["drone_name"],
-                model=d["model"],
-                manufacturer=d["manufacturer"],
-                serial_number=d["serial_number"],
-                battery_percentage=d["battery_percentage"],
-                status=d["status"],
-                location=d["location"],
-                latitude=d["latitude"],
-                longitude=d["longitude"],
-                total_flight_hours=d["total_flight_hours"],
-                max_flight_time=d["max_flight_time"],
-                max_payload=d["max_payload"],
-                created_by=admin_id,
-                created_at=datetime.now(timezone.utc) - timedelta(days=60),
-                updated_at=datetime.now(timezone.utc),
-            )
-            db.add(drone)
-            drone_objects.append(drone)
+    print("[MongoDB Seed] Seeding airframes...")
+    drones_data = [
+        {
+            "id": str(uuid.uuid4()),
+            "drone_name": "Falcon-X1",
+            "model": "Matrice 300 RTK",
+            "manufacturer": "DJI Enterprise",
+            "serial_number": "DJI-M300-8841",
+            "battery_percentage": 94.0,
+            "status": "in_flight",
+            "location": "San Francisco Sector 4",
+            "latitude": 37.7749,
+            "longitude": -122.4194,
+            "total_flight_hours": 142.5,
+            "max_flight_time": 55.0,
+            "max_payload": 2.7,
+            "created_by": admin_id,
+            "created_at": now - timedelta(days=120),
+            "updated_at": now,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "drone_name": "Guardian-Alpha",
+            "model": "Skydio X2D",
+            "manufacturer": "Skydio Defense",
+            "serial_number": "SKY-X2D-1092",
+            "battery_percentage": 87.0,
+            "status": "in_flight",
+            "location": "Oakland Industrial Port",
+            "latitude": 37.8044,
+            "longitude": -122.2712,
+            "total_flight_hours": 98.2,
+            "max_flight_time": 35.0,
+            "max_payload": 1.2,
+            "created_by": admin_id,
+            "created_at": now - timedelta(days=100),
+            "updated_at": now,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "drone_name": "SkySurveyor-4K",
+            "model": "WingtraOne GEN II",
+            "manufacturer": "Wingtra",
+            "serial_number": "WNG-GEN2-5501",
+            "battery_percentage": 100.0,
+            "status": "available",
+            "location": "Palo Alto Hangar A",
+            "latitude": 37.4419,
+            "longitude": -122.1430,
+            "total_flight_hours": 64.0,
+            "max_flight_time": 59.0,
+            "max_payload": 0.8,
+            "created_by": admin_id,
+            "created_at": now - timedelta(days=80),
+            "updated_at": now,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "drone_name": "AgriScout-V2",
+            "model": "eBee X",
+            "manufacturer": "senseFly",
+            "serial_number": "SFY-EBX-3319",
+            "battery_percentage": 100.0,
+            "status": "available",
+            "location": "Napa Valley Base",
+            "latitude": 38.2975,
+            "longitude": -122.2869,
+            "total_flight_hours": 112.8,
+            "max_flight_time": 90.0,
+            "max_payload": 3.0,
+            "created_by": admin_id,
+            "created_at": now - timedelta(days=75),
+            "updated_at": now,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "drone_name": "HeavyLift-H8",
+            "model": "Alta X",
+            "manufacturer": "Freefly Systems",
+            "serial_number": "FFY-ALTX-7720",
+            "battery_percentage": 42.0,
+            "status": "maintenance",
+            "location": "San Jose Tech Hangar 2",
+            "latitude": 37.3382,
+            "longitude": -121.8863,
+            "total_flight_hours": 215.3,
+            "max_flight_time": 50.0,
+            "max_payload": 15.9,
+            "created_by": admin_id,
+            "created_at": now - timedelta(days=150),
+            "updated_at": now,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "drone_name": "ThermalHawk-IR",
+            "model": "EVO II Dual 640T",
+            "manufacturer": "Autel Robotics",
+            "serial_number": "AUT-EVO2-9014",
+            "battery_percentage": 98.0,
+            "status": "available",
+            "location": "Fremont Charging Dock 1",
+            "latitude": 37.5485,
+            "longitude": -121.9886,
+            "total_flight_hours": 45.1,
+            "max_flight_time": 38.0,
+            "max_payload": 0.9,
+            "created_by": admin_id,
+            "created_at": now - timedelta(days=40),
+            "updated_at": now,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "drone_name": "StealthEye-S1",
+            "model": "Teledyne FLIR Siras",
+            "manufacturer": "Teledyne FLIR",
+            "serial_number": "FLR-SRS-4412",
+            "battery_percentage": 0.0,
+            "status": "offline",
+            "location": "Redwood City Staging Yard",
+            "latitude": 37.4852,
+            "longitude": -122.2364,
+            "total_flight_hours": 18.0,
+            "max_flight_time": 31.0,
+            "max_payload": 0.5,
+            "created_by": admin_id,
+            "created_at": now - timedelta(days=20),
+            "updated_at": now,
+        },
+    ]
 
-        await db.flush()
+    for d in drones_data:
+        await db.drones.insert_one(d)
 
-        print("[Database Seed] Seeding missions...")
-        now = datetime.now(timezone.utc)
-        missions_data = [
-            {
-                "mission_name": "Solar Array Thermal Inspection",
-                "mission_type": "inspection",
-                "status": "in_progress",
-                "start_location": "Solar Field Gate 1",
-                "destination": "Substation 3B",
-                "start_lat": 37.7749,
-                "start_lng": -122.4194,
-                "dest_lat": 37.7810,
-                "dest_lng": -122.4110,
-                "scheduled_at": now - timedelta(minutes=45),
-                "started_at": now - timedelta(minutes=30),
-                "drone_id": drone_objects[0].id,
-                "notes": "IR sensor active. Scanning panels 401 through 600.",
-            },
-            {
-                "mission_name": "Precision Vineyard Moisture Mapping",
-                "mission_type": "agriculture",
-                "status": "in_progress",
-                "start_location": "Ridge Vineyard Base",
-                "destination": "South Acre Block",
-                "start_lat": 37.7833,
-                "start_lng": -122.4167,
-                "dest_lat": 37.7920,
-                "dest_lng": -122.4080,
-                "scheduled_at": now - timedelta(minutes=60),
-                "started_at": now - timedelta(minutes=40),
-                "drone_id": drone_objects[1].id,
-                "notes": "Multispectral imaging for NDVI moisture indices.",
-            },
-            {
-                "mission_name": "Port Facility Security Sweep",
-                "mission_type": "surveillance",
-                "status": "completed",
-                "start_location": "Pier 14 Gate",
-                "destination": "Container Yard C",
-                "start_lat": 37.7690,
-                "start_lng": -122.4467,
-                "dest_lat": 37.7600,
-                "dest_lng": -122.4300,
-                "scheduled_at": now - timedelta(hours=5),
-                "started_at": now - timedelta(hours=4, minutes=45),
-                "completed_at": now - timedelta(hours=3, minutes=30),
-                "drone_id": drone_objects[2].id,
-                "notes": "Zero security anomalies detected along perimeter fence.",
-            },
-            {
-                "mission_name": "Emergency Medical Supply Dispatch",
-                "mission_type": "delivery",
-                "status": "completed",
-                "start_location": "Regional Hospital Helipad",
-                "destination": "Remote Clinic Station 8",
-                "start_lat": 37.7550,
-                "start_lng": -122.4200,
-                "dest_lat": 37.7400,
-                "dest_lng": -122.3900,
-                "scheduled_at": now - timedelta(hours=8),
-                "started_at": now - timedelta(hours=7, minutes=50),
-                "completed_at": now - timedelta(hours=7, minutes=15),
-                "drone_id": drone_objects[4].id,
-                "notes": "Urgent anti-venom vial payload delivered intact.",
-            },
-            {
-                "mission_name": "Wilderness Search & Rescue Grid B",
-                "mission_type": "search_rescue",
-                "status": "scheduled",
-                "start_location": "Ranger Outpost 4",
-                "destination": "Canyon Ravine Sector",
-                "start_lat": 37.7500,
-                "start_lng": -122.4300,
-                "dest_lat": 37.7300,
-                "dest_lng": -122.4100,
-                "scheduled_at": now + timedelta(hours=2),
-                "drone_id": drone_objects[3].id,
-                "notes": "Thermal FLIR scan for missing hiking party.",
-            },
-        ]
+    print("[MongoDB Seed] Seeding demo missions...")
+    missions_data = [
+        {
+            "id": str(uuid.uuid4()),
+            "mission_name": "San Francisco Harbor Perimeter Patrol",
+            "mission_type": "Surveillance",
+            "status": "in_progress",
+            "start_location": "Pier 39 Launchpad",
+            "destination": "Presidio Coastal Waypoint",
+            "start_lat": 37.8087,
+            "start_lng": -122.4098,
+            "dest_lat": 37.7989,
+            "dest_lng": -122.4662,
+            "scheduled_at": now - timedelta(hours=1),
+            "started_at": now - timedelta(minutes=45),
+            "completed_at": None,
+            "drone_id": drones_data[0]["id"],
+            "operator_id": operator_id,
+            "created_by": admin_id,
+            "created_at": now - timedelta(hours=2),
+            "updated_at": now,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "mission_name": "Port of Oakland Container Thermal Scan",
+            "mission_type": "Inspection",
+            "status": "in_progress",
+            "start_location": "Oakland Terminal 4",
+            "destination": "Bay Bridge Anchorage",
+            "start_lat": 37.8044,
+            "start_lng": -122.2712,
+            "dest_lat": 37.8188,
+            "dest_lng": -122.3488,
+            "scheduled_at": now - timedelta(minutes=50),
+            "started_at": now - timedelta(minutes=30),
+            "completed_at": None,
+            "drone_id": drones_data[1]["id"],
+            "operator_id": operator_id,
+            "created_by": admin_id,
+            "created_at": now - timedelta(hours=1),
+            "updated_at": now,
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "mission_name": "Napa Vineyard Multispectral Survey",
+            "mission_type": "Survey",
+            "status": "completed",
+            "start_location": "Rutherford Estate",
+            "destination": "Oakville Crossroad",
+            "start_lat": 38.4589,
+            "start_lng": -122.4228,
+            "dest_lat": 38.4312,
+            "dest_lng": -122.4011,
+            "scheduled_at": now - timedelta(days=1, hours=4),
+            "started_at": now - timedelta(days=1, hours=3),
+            "completed_at": now - timedelta(days=1, hours=1),
+            "drone_id": drones_data[3]["id"],
+            "operator_id": operator_id,
+            "created_by": admin_id,
+            "created_at": now - timedelta(days=2),
+            "updated_at": now,
+        },
+    ]
 
-        for m in missions_data:
-            mission = Mission(
-                id=uuid.uuid4(),
-                mission_name=m["mission_name"],
-                mission_type=m["mission_type"],
-                status=m["status"],
-                start_location=m["start_location"],
-                destination=m["destination"],
-                start_lat=m["start_lat"],
-                start_lng=m["start_lng"],
-                dest_lat=m["dest_lat"],
-                dest_lng=m["dest_lng"],
-                scheduled_at=m.get("scheduled_at"),
-                started_at=m.get("started_at"),
-                completed_at=m.get("completed_at"),
-                notes=m.get("notes"),
-                drone_id=m["drone_id"],
-                operator_id=operator_id,
-                created_by=admin_id,
-                created_at=now - timedelta(days=2),
-                updated_at=now,
-            )
-            db.add(mission)
+    for m in missions_data:
+        await db.missions.insert_one(m)
 
-        print("[Database Seed] Seeding maintenance records...")
-        maint_data = [
-            {
-                "drone_id": drone_objects[6].id,
-                "category": "motor_inspection",
-                "description": "50-hour brushless motor bearing check and vibration test.",
-                "status": "in_progress",
-                "scheduled_date": now - timedelta(days=1),
-                "cost": 320.0,
-            },
-            {
-                "drone_id": drone_objects[5].id,
-                "category": "battery_replacement",
-                "description": "LiPo smart battery cell imbalance replacement.",
-                "status": "scheduled",
-                "scheduled_date": now + timedelta(days=3),
-                "cost": 185.0,
-            },
-            {
-                "drone_id": drone_objects[0].id,
-                "category": "propeller_replacement",
-                "description": "Composite carbon fiber prop blade routine refresh.",
-                "status": "completed",
-                "scheduled_date": now - timedelta(days=14),
-                "completed_date": now - timedelta(days=13),
-                "cost": 140.0,
-            },
-        ]
+    print("[MongoDB Seed] Seeding demo alerts & maintenance...")
+    alerts_data = [
+        {
+            "id": str(uuid.uuid4()),
+            "alert_type": "propulsion_warning",
+            "severity": "warning",
+            "message": "HeavyLift-H8 scheduled rotor inspection overdue by 48 hours.",
+            "drone_id": drones_data[4]["id"],
+            "is_read": False,
+            "created_at": now - timedelta(hours=3),
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "alert_type": "telemetry_lost",
+            "severity": "critical",
+            "message": "StealthEye-S1 offline in Redwood City. Signal timeout exceeded.",
+            "drone_id": drones_data[6]["id"],
+            "is_read": False,
+            "created_at": now - timedelta(hours=1),
+        },
+    ]
+    for a in alerts_data:
+        await db.alerts.insert_one(a)
 
-        for mr in maint_data:
-            record = MaintenanceRecord(
-                id=uuid.uuid4(),
-                drone_id=mr["drone_id"],
-                category=mr["category"],
-                description=mr["description"],
-                status=mr["status"],
-                scheduled_date=mr["scheduled_date"],
-                completed_date=mr.get("completed_date"),
-                performed_by=admin_id,
-                cost=mr["cost"],
-                created_at=now - timedelta(days=15),
-                updated_at=now,
-            )
-            db.add(record)
+    await db.maintenance.insert_one({
+        "id": str(uuid.uuid4()),
+        "drone_id": drones_data[4]["id"],
+        "category": "propulsion",
+        "description": "Routine 200-hour rotor bearing calibration and firmware update",
+        "status": "scheduled",
+        "scheduled_date": now + timedelta(days=2),
+        "completed_date": None,
+        "notes": "Parts received in hangar 2",
+        "created_at": now - timedelta(days=1),
+        "updated_at": now,
+    })
 
-        print("[Database Seed] Seeding alerts...")
-        alerts_data = [
-            {
-                "alert_type": "low_battery",
-                "severity": "critical",
-                "message": "Drone Vanguard Patrol-7 critical battery level at 18%. Immediate RTL recommended.",
-                "drone_id": drone_objects[5].id,
-            },
-            {
-                "alert_type": "drone_offline",
-                "severity": "warning",
-                "message": "Ghost Recon-9 heartbeat signal lost. Status set to Offline.",
-                "drone_id": drone_objects[7].id,
-            },
-            {
-                "alert_type": "maintenance_required",
-                "severity": "info",
-                "message": "TerraSurveyor Delta reached scheduled 150-hour motor inspection cycle.",
-                "drone_id": drone_objects[6].id,
-            },
-        ]
-
-        for a in alerts_data:
-            alert = Alert(
-                id=uuid.uuid4(),
-                alert_type=a["alert_type"],
-                severity=a["severity"],
-                message=a["message"],
-                drone_id=a["drone_id"],
-                is_read=False,
-                created_at=now - timedelta(minutes=25),
-            )
-            db.add(alert)
-
-        # Seed initial notification for admin
-        db.add(
-            Notification(
-                id=uuid.uuid4(),
-                user_id=admin_id,
-                title="Fleet Command Ready",
-                message="All autonomous telemetry simulation and services initialized.",
-                notification_type="system",
-                is_read=False,
-                created_at=now,
-            )
-        )
-
-        await db.commit()
-        print("[Database Seed] Initial seed completed successfully!")
+    print("[MongoDB Seed] Successfully populated initial fleet database!")
 
 
 if __name__ == "__main__":

@@ -28,8 +28,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # Database
-    DATABASE_URL: str = "sqlite+aiosqlite:///./drone_fleet.db"
+    # MongoDB Database
+    MONGODB_URI: str = "mongodb://localhost:27017/drone_fleet"
+    MONGODB_DB_NAME: str = "drone_fleet"
+    DATABASE_URL: str = "mongodb://localhost:27017/drone_fleet"
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

@@ -2,13 +2,11 @@
 FastAPI dependency injection utilities for authentication and authorization.
 """
 
-from typing import List
+from typing import List, Any
 import uuid
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import verify_token
 from app.database.session import get_db
@@ -20,14 +18,11 @@ security_scheme = HTTPBearer(auto_error=False)
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
 ) -> User:
     """
     Dependency that extracts and validates the JWT token from the
     Authorization header, then returns the corresponding User.
-
-    Raises:
-        HTTPException 401: If token is missing, invalid, or user not found.
     """
     if credentials is None:
         raise HTTPException(
@@ -62,22 +57,17 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    try:
-        lookup_id = uuid.UUID(str(user_id_raw))
-    except (ValueError, AttributeError):
-        lookup_id = user_id_raw
+    uid_str = str(user_id_raw)
+    user_doc = await db.users.find_one({"$or": [{"id": uid_str}, {"email": uid_str}]})
 
-    result = await db.execute(select(User).where(User.id == lookup_id))
-    user = result.scalar_one_or_none()
-
-    if user is None:
+    if user_doc is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return user
+    return User(user_doc)
 
 
 async def get_current_active_user(

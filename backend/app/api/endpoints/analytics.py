@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Query, Response
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user
 from app.database.session import get_db
@@ -16,7 +15,7 @@ router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
 
 @router.get("/overview")
 async def get_overview(
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Get high-level summary statistics for the dashboard."""
@@ -27,7 +26,7 @@ async def get_overview(
 async def get_mission_analytics(
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Get mission performance metrics, monthly trends, and type distribution."""
@@ -38,7 +37,7 @@ async def get_mission_analytics(
 
 @router.get("/drones")
 async def get_drone_analytics(
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Get drone utilization, battery health status, and reliability comparisons."""
@@ -48,7 +47,7 @@ async def get_drone_analytics(
 @router.get("/export/csv")
 async def export_csv(
     report_type: str = Query("overview", pattern="^(overview|drones|missions|maintenance)$"),
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Response:
     """Export analytics report as a downloadable CSV file."""
@@ -64,7 +63,7 @@ async def export_csv(
 @router.get("/export/pdf")
 async def export_pdf(
     report_type: str = Query("overview", pattern="^(overview|drones|missions|maintenance)$"),
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Response:
     """Export analytics report in PDF format."""

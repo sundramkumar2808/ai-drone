@@ -4,7 +4,6 @@ from typing import Any, List, Optional
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, RoleChecker
 from app.database.session import get_db
@@ -29,7 +28,7 @@ async def list_missions(
     status: Optional[str] = Query(None),
     mission_type: Optional[str] = Query(None),
     drone_id: Optional[uuid.UUID] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """List missions with optional filtering."""
@@ -50,7 +49,7 @@ async def list_missions(
 @router.post("", response_model=MissionResponse, status_code=status.HTTP_201_CREATED)
 async def create_mission(
     mission_data: MissionCreate,
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(planner_roles),
 ) -> Any:
     """Create and schedule a new drone mission."""
@@ -64,7 +63,7 @@ async def create_mission(
 @router.get("/{mission_id}", response_model=MissionResponse)
 async def get_mission(
     mission_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Get mission details."""
@@ -81,7 +80,7 @@ async def get_mission(
 async def update_mission(
     mission_id: uuid.UUID,
     mission_data: MissionUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(planner_roles),
 ) -> Any:
     """Update mission details or change mission status."""
@@ -97,7 +96,7 @@ async def update_mission(
 @router.delete("/{mission_id}")
 async def cancel_mission(
     mission_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(planner_roles),
 ) -> Any:
     """Cancel a mission."""

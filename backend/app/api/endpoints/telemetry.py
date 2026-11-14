@@ -4,7 +4,6 @@ from typing import Any, List
 import uuid
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user
 from app.database.session import get_db
@@ -18,7 +17,7 @@ router = APIRouter(tags=["Telemetry"])
 
 @router.get("/api/telemetry", response_model=List[dict])
 async def get_all_telemetry(
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Get the latest telemetry reading for every drone in the fleet."""
@@ -29,7 +28,7 @@ async def get_all_telemetry(
 async def get_drone_telemetry(
     drone_id: uuid.UUID,
     limit: int = Query(50, ge=1, le=200),
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Get historical telemetry records for a specific drone."""

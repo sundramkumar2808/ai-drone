@@ -4,7 +4,6 @@ from typing import Any, List, Optional
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user
 from app.database.session import get_db
@@ -21,7 +20,7 @@ async def list_alerts(
     severity: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """List system alerts with filtering."""
@@ -37,7 +36,7 @@ async def list_alerts(
 @router.put("/{alert_id}/read", response_model=AlertResponse)
 async def mark_alert_as_read(
     alert_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Mark a specific alert as read."""
@@ -53,7 +52,7 @@ async def mark_alert_as_read(
 @router.get("/notifications", response_model=List[NotificationResponse])
 async def list_notifications(
     is_read: Optional[bool] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Get notifications for the current authenticated user."""
@@ -65,7 +64,7 @@ async def list_notifications(
 @router.put("/notifications/{notification_id}/read", response_model=NotificationResponse)
 async def mark_notification_as_read(
     notification_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
+    db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """Mark a notification as read."""
