@@ -45,8 +45,8 @@ const DronesPage = () => {
     max_payload: 3.5,
   });
 
-  const fetchDrones = async () => {
-    setLoading(true);
+  const fetchDrones = async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     try {
       const res = await droneService.getDrones({
         skip: (page - 1) * 10,
@@ -59,12 +59,16 @@ const DronesPage = () => {
     } catch (err) {
       console.error('Failed to load fleet drones:', err);
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchDrones();
+    fetchDrones(false);
+    const interval = setInterval(() => {
+      fetchDrones(true);
+    }, 4000);
+    return () => clearInterval(interval);
   }, [page, search, statusFilter]);
 
   const handleOpenAdd = () => {

@@ -177,6 +177,34 @@ const TelemetryPage = () => {
     }
   };
 
+  const handleQuickBatteryChange = async (newBattery) => {
+    if (!activeDrone || !activeDrone.drone_id) return;
+    const clampedBattery = Math.max(1, Math.min(100, Math.round(Number(newBattery))));
+    setUpdatingStatus(true);
+    setStatusFeedback(`Updating ${activeDrone.drone_name} battery to ${clampedBattery}%...`);
+    try {
+      // 1. Immediately update local telemetry state for instant responsiveness
+      setDronesTelemetry((prev) =>
+        prev.map((d) =>
+          d.drone_id === activeDrone.drone_id
+            ? { ...d, battery_level: clampedBattery }
+            : d
+        )
+      );
+
+      // 2. Persist to MongoDB backend (updates drone record and synchronizes with Fleet Management)
+      await droneService.updateDrone(activeDrone.drone_id, { battery_percentage: clampedBattery });
+      setStatusFeedback(`Battery synchronized with Fleet Management (${clampedBattery}%)!`);
+      setTimeout(() => setStatusFeedback(null), 3500);
+    } catch (err) {
+      console.error('Failed to update drone battery from telemetry:', err);
+      setStatusFeedback(null);
+      alert(err.response?.data?.detail || 'Failed to update drone battery');
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
       {/* Header Bar */}
@@ -394,116 +422,202 @@ const TelemetryPage = () => {
           </div>
         </div>
 
-        {/* Quick Status Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, marginRight: '4px' }}>
-            CHANGE STATUS:
-          </span>
+        {/* Quick Controls Section */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {/* Status Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, minWidth: '95px' }}>
+              SET STATUS:
+            </span>
 
-          <button
-            onClick={() => handleQuickStatusChange('in_flight')}
-            disabled={updatingStatus || activeDrone.status === 'in_flight'}
-            style={{
-              padding: '7px 14px',
-              borderRadius: '8px',
-              border: activeDrone.status === 'in_flight' ? '1px solid #00d4ff' : '1px solid rgba(255, 255, 255, 0.1)',
-              backgroundColor: activeDrone.status === 'in_flight' ? 'rgba(0, 212, 255, 0.25)' : 'rgba(15, 23, 42, 0.8)',
-              color: activeDrone.status === 'in_flight' ? '#00d4ff' : '#94a3b8',
-              fontWeight: 600,
-              fontSize: '0.8rem',
-              cursor: updatingStatus ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <Plane size={14} /> IN FLIGHT
-          </button>
+            <button
+              onClick={() => handleQuickStatusChange('in_flight')}
+              disabled={updatingStatus || activeDrone.status === 'in_flight'}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: activeDrone.status === 'in_flight' ? '1px solid #00d4ff' : '1px solid rgba(255, 255, 255, 0.1)',
+                backgroundColor: activeDrone.status === 'in_flight' ? 'rgba(0, 212, 255, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+                color: activeDrone.status === 'in_flight' ? '#00d4ff' : '#94a3b8',
+                fontWeight: 600,
+                fontSize: '0.78rem',
+                cursor: updatingStatus ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Plane size={13} /> IN FLIGHT
+            </button>
 
-          <button
-            onClick={() => handleQuickStatusChange('available')}
-            disabled={updatingStatus || activeDrone.status === 'available'}
-            style={{
-              padding: '7px 14px',
-              borderRadius: '8px',
-              border: activeDrone.status === 'available' ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.1)',
-              backgroundColor: activeDrone.status === 'available' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(15, 23, 42, 0.8)',
-              color: activeDrone.status === 'available' ? '#10b981' : '#94a3b8',
-              fontWeight: 600,
-              fontSize: '0.8rem',
-              cursor: updatingStatus ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <CheckCircle size={14} /> AVAILABLE
-          </button>
+            <button
+              onClick={() => handleQuickStatusChange('available')}
+              disabled={updatingStatus || activeDrone.status === 'available'}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: activeDrone.status === 'available' ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.1)',
+                backgroundColor: activeDrone.status === 'available' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+                color: activeDrone.status === 'available' ? '#10b981' : '#94a3b8',
+                fontWeight: 600,
+                fontSize: '0.78rem',
+                cursor: updatingStatus ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <CheckCircle size={13} /> AVAILABLE
+            </button>
 
-          <button
-            onClick={() => handleQuickStatusChange('maintenance')}
-            disabled={updatingStatus || activeDrone.status === 'maintenance'}
-            style={{
-              padding: '7px 14px',
-              borderRadius: '8px',
-              border: activeDrone.status === 'maintenance' ? '1px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.1)',
-              backgroundColor: activeDrone.status === 'maintenance' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(15, 23, 42, 0.8)',
-              color: activeDrone.status === 'maintenance' ? '#f59e0b' : '#94a3b8',
-              fontWeight: 600,
-              fontSize: '0.8rem',
-              cursor: updatingStatus ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <Wrench size={14} /> MAINTENANCE
-          </button>
+            <button
+              onClick={() => handleQuickStatusChange('maintenance')}
+              disabled={updatingStatus || activeDrone.status === 'maintenance'}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: activeDrone.status === 'maintenance' ? '1px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.1)',
+                backgroundColor: activeDrone.status === 'maintenance' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+                color: activeDrone.status === 'maintenance' ? '#f59e0b' : '#94a3b8',
+                fontWeight: 600,
+                fontSize: '0.78rem',
+                cursor: updatingStatus ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Wrench size={13} /> MAINTENANCE
+            </button>
 
-          <button
-            onClick={() => handleQuickStatusChange('offline')}
-            disabled={updatingStatus || activeDrone.status === 'offline'}
-            style={{
-              padding: '7px 14px',
-              borderRadius: '8px',
-              border: activeDrone.status === 'offline' ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.1)',
-              backgroundColor: activeDrone.status === 'offline' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(15, 23, 42, 0.8)',
-              color: activeDrone.status === 'offline' ? '#ef4444' : '#94a3b8',
-              fontWeight: 600,
-              fontSize: '0.8rem',
-              cursor: updatingStatus ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            <PowerOff size={14} /> OFFLINE
-          </button>
+            <button
+              onClick={() => handleQuickStatusChange('offline')}
+              disabled={updatingStatus || activeDrone.status === 'offline'}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: activeDrone.status === 'offline' ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.1)',
+                backgroundColor: activeDrone.status === 'offline' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+                color: activeDrone.status === 'offline' ? '#ef4444' : '#94a3b8',
+                fontWeight: 600,
+                fontSize: '0.78rem',
+                cursor: updatingStatus ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <PowerOff size={13} /> OFFLINE
+            </button>
 
-          <button
-            onClick={() => navigate('/drones')}
-            style={{
-              padding: '7px 12px',
-              borderRadius: '8px',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              backgroundColor: 'rgba(255, 255, 255, 0.05)',
-              color: '#ffffff',
-              fontWeight: 600,
-              fontSize: '0.8rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              marginLeft: '4px',
-            }}
-            title="Open in Drone Fleet Management"
-          >
-            Fleet <ExternalLink size={13} />
-          </button>
+            <button
+              onClick={() => navigate('/drones')}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                color: '#ffffff',
+                fontWeight: 600,
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                marginLeft: '4px',
+              }}
+              title="Open in Drone Fleet Management"
+            >
+              Fleet <ExternalLink size={13} />
+            </button>
+          </div>
+
+          {/* Battery Quick Adjust Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, minWidth: '95px' }}>
+              SET BATTERY:
+            </span>
+
+            <button
+              onClick={() => handleQuickBatteryChange(100)}
+              disabled={updatingStatus}
+              style={{
+                padding: '5px 12px',
+                borderRadius: '8px',
+                border: activeDrone.battery_level >= 98 ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.1)',
+                backgroundColor: activeDrone.battery_level >= 98 ? 'rgba(16, 185, 129, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+                color: activeDrone.battery_level >= 98 ? '#10b981' : '#94a3b8',
+                fontWeight: 600,
+                fontSize: '0.75rem',
+                cursor: updatingStatus ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              title="Full Charge (100%)"
+            >
+              ⚡ 100% Full
+            </button>
+
+            <button
+              onClick={() => handleQuickBatteryChange(75)}
+              disabled={updatingStatus}
+              style={{
+                padding: '5px 12px',
+                borderRadius: '8px',
+                border: activeDrone.battery_level >= 70 && activeDrone.battery_level < 85 ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.1)',
+                backgroundColor: activeDrone.battery_level >= 70 && activeDrone.battery_level < 85 ? 'rgba(16, 185, 129, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+                color: activeDrone.battery_level >= 70 && activeDrone.battery_level < 85 ? '#10b981' : '#94a3b8',
+                fontWeight: 600,
+                fontSize: '0.75rem',
+                cursor: updatingStatus ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              title="Set battery to 75%"
+            >
+              ⚡ 75%
+            </button>
+
+            <button
+              onClick={() => handleQuickBatteryChange(50)}
+              disabled={updatingStatus}
+              style={{
+                padding: '5px 12px',
+                borderRadius: '8px',
+                border: activeDrone.battery_level >= 45 && activeDrone.battery_level < 60 ? '1px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.1)',
+                backgroundColor: activeDrone.battery_level >= 45 && activeDrone.battery_level < 60 ? 'rgba(245, 158, 11, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+                color: activeDrone.battery_level >= 45 && activeDrone.battery_level < 60 ? '#f59e0b' : '#94a3b8',
+                fontWeight: 600,
+                fontSize: '0.75rem',
+                cursor: updatingStatus ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              title="Set battery to 50%"
+            >
+              ⚡ 50%
+            </button>
+
+            <button
+              onClick={() => handleQuickBatteryChange(20)}
+              disabled={updatingStatus}
+              style={{
+                padding: '5px 12px',
+                borderRadius: '8px',
+                border: activeDrone.battery_level <= 30 ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.1)',
+                backgroundColor: activeDrone.battery_level <= 30 ? 'rgba(239, 68, 68, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+                color: activeDrone.battery_level <= 30 ? '#ef4444' : '#94a3b8',
+                fontWeight: 600,
+                fontSize: '0.75rem',
+                cursor: updatingStatus ? 'not-allowed' : 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              title="Set battery to 20% (low charge)"
+            >
+              ⚡ 20% Low
+            </button>
+          </div>
         </div>
       </div>
 
@@ -546,12 +660,88 @@ const TelemetryPage = () => {
         <div style={gaugeCardStyle}>
           <div style={gaugeHeaderStyle}>
             <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>BATTERY CHARGE</span>
-            <Battery size={18} color="#10b981" />
+            <Battery
+              size={18}
+              color={
+                activeDrone.battery_level > 50
+                  ? '#10b981'
+                  : activeDrone.battery_level > 20
+                  ? '#f59e0b'
+                  : '#ef4444'
+              }
+            />
           </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#ffffff' }}>
-            {activeDrone.battery_level} <span style={{ fontSize: '0.9rem', color: '#64748b' }}>%</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#ffffff' }}>
+              {activeDrone.battery_level} <span style={{ fontSize: '0.9rem', color: '#64748b' }}>%</span>
+            </div>
+            <button
+              onClick={() => handleQuickBatteryChange(100)}
+              disabled={updatingStatus || activeDrone.battery_level >= 99}
+              style={{
+                padding: '3px 8px',
+                borderRadius: '6px',
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                color: '#10b981',
+                fontSize: '0.7rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+              title="Charge battery to 100%"
+            >
+              ⚡ 100%
+            </button>
           </div>
-          <span style={{ fontSize: '0.75rem', color: '#10b981' }}>LiPo 6S Smart Pack</span>
+
+          {/* Color-coded Battery Bar */}
+          <div
+            style={{
+              width: '100%',
+              height: '6px',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: '3px',
+              overflow: 'hidden',
+              margin: '3px 0 6px',
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.min(100, Math.max(0, activeDrone.battery_level))}%`,
+                height: '100%',
+                backgroundColor:
+                  activeDrone.battery_level > 50
+                    ? '#10b981'
+                    : activeDrone.battery_level > 20
+                    ? '#f59e0b'
+                    : '#ef4444',
+                transition: 'width 0.3s ease',
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '4px' }}>
+            {[100, 75, 50, 20].map((val) => (
+              <button
+                key={val}
+                onClick={() => handleQuickBatteryChange(val)}
+                disabled={updatingStatus}
+                style={{
+                  flex: 1,
+                  padding: '2px 4px',
+                  borderRadius: '4px',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                  color: '#94a3b8',
+                  fontSize: '0.65rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {val}%
+              </button>
+            ))}
+          </div>
         </div>
 
         <div style={gaugeCardStyle}>

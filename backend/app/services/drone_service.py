@@ -93,6 +93,8 @@ async def update_drone(
     # Immediately synchronize with telemetry simulator and db.telemetry
     try:
         from app.services.telemetry_service import telemetry_simulator
+
+        # 1. Sync Status
         new_status = update_dict.get("status")
         if new_status:
             telemetry_simulator.notify_drone_status_change(drone_str_id, new_status)
@@ -107,6 +109,21 @@ async def update_drone(
                     "status": new_status,
                     "altitude": alt,
                     "speed": spd,
+                    "timestamp": datetime.now(timezone.utc),
+                }},
+                upsert=True
+            )
+
+        # 2. Sync Battery Percentage
+        new_battery = update_dict.get("battery_percentage")
+        if new_battery is not None:
+            bat_flt = round(float(new_battery), 1)
+            telemetry_simulator.notify_drone_battery_change(drone_str_id, bat_flt)
+            await db.telemetry.update_one(
+                {"drone_id": drone_str_id},
+                {"$set": {
+                    "drone_id": drone_str_id,
+                    "battery_level": bat_flt,
                     "timestamp": datetime.now(timezone.utc),
                 }},
                 upsert=True

@@ -169,6 +169,12 @@ class TelemetrySimulator:
                 state["altitude"] = 0.0
                 state["speed"] = 0.0
 
+    def notify_drone_battery_change(self, drone_id: str, new_battery: float):
+        """Immediately update simulated battery level when drone battery is modified."""
+        key = str(drone_id)
+        if key in self._drone_states:
+            self._drone_states[key]["battery_level"] = round(float(new_battery), 1)
+
     def start(self, db_getter):
         """Start the telemetry background loop."""
         if not self._running:
@@ -207,15 +213,17 @@ class TelemetrySimulator:
                         status = drone.get("status", "available")
                         is_flying = status in ["in_flight", "active"]
 
+                        drone_update = {
+                            "battery_percentage": data["battery_level"]
+                        }
                         if is_flying:
-                            await db.drones.update_one(
-                                {"id": drone_id},
-                                {"$set": {
-                                    "latitude": data["latitude"],
-                                    "longitude": data["longitude"],
-                                    "battery_percentage": data["battery_level"]
-                                }}
-                            )
+                            drone_update["latitude"] = data["latitude"]
+                            drone_update["longitude"] = data["longitude"]
+
+                        await db.drones.update_one(
+                            {"$or": [{"id": drone_id}, {"_id": drone_id}]},
+                            {"$set": drone_update}
+                        )
 
                         # Upsert telemetry record in DB
                         await db.telemetry.update_one(
@@ -285,6 +293,13 @@ class TelemetrySimulator:
             else:
                 state["altitude"] = 0.0
                 state["speed"] = 0.0
+
+        # Sync battery level if changed in DB (e.g. via Fleet Management or API)
+        db_battery = drone.get("battery_percentage")
+        if db_battery is not None:
+            db_bat_flt = round(float(db_battery), 1)
+            if abs(db_bat_flt - float(state.get("battery_level", 0.0))) > 1.0:
+                state["battery_level"] = db_bat_flt
 
         if is_flying:
             # Ensure in-flight drone always has realistic cruising altitude & ground speed
