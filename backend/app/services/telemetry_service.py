@@ -146,10 +146,28 @@ class TelemetrySimulator:
         """Get live simulated state for a drone."""
         key = str(drone_id)
         if key in self._drone_states:
+            if drone and drone.get("status") and self._drone_states[key].get("status") != drone.get("status"):
+                self.notify_drone_status_change(key, drone.get("status"))
             return self._drone_states[key]
         if drone:
             return self._generate_telemetry(drone)
         return None
+
+    def notify_drone_status_change(self, drone_id: str, new_status: str):
+        """Immediately update simulated state when a drone's status changes."""
+        key = str(drone_id)
+        is_flying = new_status in ["in_flight", "active"]
+        if key in self._drone_states:
+            state = self._drone_states[key]
+            state["status"] = new_status
+            if is_flying:
+                if state.get("altitude", 0.0) <= 0.0:
+                    state["altitude"] = round(random.uniform(105.0, 145.0), 1)
+                if state.get("speed", 0.0) <= 0.0:
+                    state["speed"] = round(random.uniform(12.0, 17.5), 1)
+            else:
+                state["altitude"] = 0.0
+                state["speed"] = 0.0
 
     def start(self, db_getter):
         """Start the telemetry background loop."""
@@ -254,8 +272,19 @@ class TelemetrySimulator:
                 "battery_level": float(drone.get("battery_percentage") or 90.0),
                 "temperature": round(random.uniform(25.0, 32.0), 1) if is_flying else 22.0,
                 "gps_signal": round(random.uniform(92.0, 99.0), 1),
+                "status": status,
             }
             self._drone_states[drone_key] = state
+
+        # If DB status differs from cached status, update immediately
+        if state.get("status") != status:
+            state["status"] = status
+            if is_flying:
+                state["altitude"] = round(random.uniform(105.0, 145.0), 1)
+                state["speed"] = round(random.uniform(12.0, 17.5), 1)
+            else:
+                state["altitude"] = 0.0
+                state["speed"] = 0.0
 
         if is_flying:
             # Ensure in-flight drone always has realistic cruising altitude & ground speed

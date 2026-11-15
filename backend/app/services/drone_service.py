@@ -75,7 +75,7 @@ async def create_drone(
 async def update_drone(
     db: Any, drone_id: Any, drone_data: DroneUpdate
 ) -> Optional[Drone]:
-    """Update an existing drone."""
+    """Update an existing drone and synchronize live telemetry."""
     target = await get_drone(db, drone_id)
     if not target:
         return None
@@ -83,8 +83,37 @@ async def update_drone(
     update_dict = drone_data.model_dump(exclude_unset=True)
     update_dict["updated_at"] = datetime.now(timezone.utc)
 
-    await db.drones.update_one({"id": str(target.id)}, {"$set": update_dict})
+    drone_str_id = str(target.id)
+    await db.drones.update_one(
+        {"$or": [{"id": drone_str_id}, {"_id": drone_str_id}]},
+        {"$set": update_dict}
+    )
     target.update(update_dict)
+
+    # Immediately synchronize with telemetry simulator and db.telemetry
+    try:
+        from app.services.telemetry_service import telemetry_simulator
+        new_status = update_dict.get("status")
+        if new_status:
+            telemetry_simulator.notify_drone_status_change(drone_str_id, new_status)
+
+            is_flying = new_status in ["in_flight", "active"]
+            alt = 125.0 if is_flying else 0.0
+            spd = 14.5 if is_flying else 0.0
+            await db.telemetry.update_one(
+                {"drone_id": drone_str_id},
+                {"$set": {
+                    "drone_id": drone_str_id,
+                    "status": new_status,
+                    "altitude": alt,
+                    "speed": spd,
+                    "timestamp": datetime.now(timezone.utc),
+                }},
+                upsert=True
+            )
+    except Exception:
+        pass
+
     return target
 
 

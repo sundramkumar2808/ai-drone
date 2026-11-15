@@ -26,7 +26,7 @@ async def get_all_telemetry(
 
 @router.get("/api/telemetry/{drone_id}", response_model=List[TelemetryResponse])
 async def get_drone_telemetry(
-    drone_id: uuid.UUID,
+    drone_id: str,
     limit: int = Query(50, ge=1, le=200),
     db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),

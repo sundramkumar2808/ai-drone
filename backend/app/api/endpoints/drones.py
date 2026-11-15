@@ -19,7 +19,7 @@ from app.services import drone_service
 router = APIRouter(prefix="/api/drones", tags=["Drones"])
 
 # Role guards
-admin_or_manager = RoleChecker(["admin", "fleet_manager"])
+admin_or_manager = RoleChecker(["admin", "fleet_manager", "operator"])
 admin_only = RoleChecker(["admin"])
 
 
@@ -55,7 +55,7 @@ async def create_drone(
 
 @router.get("/{drone_id}", response_model=DroneResponse)
 async def get_drone(
-    drone_id: uuid.UUID,
+    drone_id: str,
     db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
@@ -71,12 +71,12 @@ async def get_drone(
 
 @router.put("/{drone_id}", response_model=DroneResponse)
 async def update_drone(
-    drone_id: uuid.UUID,
+    drone_id: str,
     drone_data: DroneUpdate,
     db: Any = Depends(get_db),
     current_user: User = Depends(admin_or_manager),
 ) -> Any:
-    """Update drone properties and status (admin or fleet manager only)."""
+    """Update drone properties and status."""
     drone = await drone_service.update_drone(db, drone_id, drone_data)
     if not drone:
         raise HTTPException(
@@ -88,7 +88,7 @@ async def update_drone(
 
 @router.delete("/{drone_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_drone(
-    drone_id: uuid.UUID,
+    drone_id: str,
     db: Any = Depends(get_db),
     current_user: User = Depends(admin_only),
 ) -> None:

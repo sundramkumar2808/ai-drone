@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Radio,
   Battery,
@@ -10,6 +11,11 @@ import {
   MapPin,
   RefreshCw,
   Eye,
+  Plane,
+  CheckCircle,
+  Wrench,
+  PowerOff,
+  ExternalLink,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -22,15 +28,19 @@ import {
 } from 'recharts';
 import { useWebSocket } from '../hooks/useWebSocket';
 import telemetryService, { getWsUrl } from '../services/telemetryService';
+import droneService from '../services/droneService';
 import StatusBadge from '../components/common/StatusBadge';
 
 const TelemetryPage = () => {
+  const navigate = useNavigate();
   const wsEndpoint = `${getWsUrl()}/ws/telemetry`;
   const { data: wsData, isConnected } = useWebSocket(wsEndpoint);
 
   const [dronesTelemetry, setDronesTelemetry] = useState([]);
   const [selectedDroneId, setSelectedDroneId] = useState(null);
   const [history, setHistory] = useState([]);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [statusFeedback, setStatusFeedback] = useState(null);
 
   // Fetch initial telemetry via REST & fallback periodic polling
   useEffect(() => {
@@ -127,6 +137,44 @@ const TelemetryPage = () => {
     ...rawActiveDrone,
     altitude: displayAltitude,
     speed: displaySpeed,
+  };
+
+  const handleQuickStatusChange = async (newStatus) => {
+    if (!activeDrone || !activeDrone.drone_id) return;
+    setUpdatingStatus(true);
+    setStatusFeedback(`Updating ${activeDrone.drone_name} to ${newStatus.replace('_', ' ').toUpperCase()}...`);
+    try {
+      // 1. Immediately update local telemetry state for instant responsiveness
+      setDronesTelemetry((prev) =>
+        prev.map((d) =>
+          d.drone_id === activeDrone.drone_id
+            ? {
+                ...d,
+                status: newStatus,
+                altitude:
+                  newStatus === 'in_flight' || newStatus === 'active'
+                    ? (Number(d.altitude) > 0 ? d.altitude : 124.5)
+                    : 0,
+                speed:
+                  newStatus === 'in_flight' || newStatus === 'active'
+                    ? (Number(d.speed) > 0 ? d.speed : 14.2)
+                    : 0,
+              }
+            : d
+        )
+      );
+
+      // 2. Persist to MongoDB backend (synchronizes with Drone Fleet Management)
+      await droneService.updateDrone(activeDrone.drone_id, { status: newStatus });
+      setStatusFeedback(`Status synchronized with Fleet Management!`);
+      setTimeout(() => setStatusFeedback(null), 3500);
+    } catch (err) {
+      console.error('Failed to update drone status from telemetry:', err);
+      setStatusFeedback(null);
+      alert(err.response?.data?.detail || 'Failed to update drone status');
+    } finally {
+      setUpdatingStatus(false);
+    }
   };
 
   return (
@@ -232,8 +280,20 @@ const TelemetryPage = () => {
                   padding: '2px 6px',
                   borderRadius: '4px',
                   textTransform: 'uppercase',
-                  backgroundColor: isDroneFlying ? 'rgba(0, 212, 255, 0.2)' : 'rgba(100, 116, 139, 0.2)',
-                  color: isDroneFlying ? '#00d4ff' : '#94a3b8',
+                  backgroundColor: isDroneFlying
+                    ? 'rgba(0, 212, 255, 0.2)'
+                    : d.status === 'maintenance'
+                    ? 'rgba(245, 158, 11, 0.2)'
+                    : d.status === 'offline'
+                    ? 'rgba(239, 68, 68, 0.2)'
+                    : 'rgba(16, 185, 129, 0.2)',
+                  color: isDroneFlying
+                    ? '#00d4ff'
+                    : d.status === 'maintenance'
+                    ? '#f59e0b'
+                    : d.status === 'offline'
+                    ? '#ef4444'
+                    : '#10b981',
                 }}
               >
                 {isDroneFlying ? 'IN FLIGHT' : (d.status || 'AVAILABLE').replace('_', ' ')}
@@ -250,6 +310,201 @@ const TelemetryPage = () => {
             </button>
           );
         })}
+      </div>
+
+      {/* Selected Drone Command & Quick Status Control Bar */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '12px',
+          padding: '14px 20px',
+          borderRadius: '14px',
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          border: '1px solid rgba(0, 212, 255, 0.25)',
+          backdropFilter: 'blur(12px)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div
+            style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '12px',
+              backgroundColor: isFlying ? 'rgba(0, 212, 255, 0.15)' : 'rgba(100, 116, 139, 0.15)',
+              border: `1px solid ${isFlying ? 'rgba(0, 212, 255, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Radio size={22} color={isFlying ? '#00d4ff' : '#94a3b8'} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ffffff' }}>
+                {activeDrone.drone_name}
+              </span>
+              <span
+                style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  textTransform: 'uppercase',
+                  backgroundColor: isFlying
+                    ? 'rgba(0, 212, 255, 0.2)'
+                    : activeDrone.status === 'maintenance'
+                    ? 'rgba(245, 158, 11, 0.2)'
+                    : activeDrone.status === 'offline'
+                    ? 'rgba(239, 68, 68, 0.2)'
+                    : 'rgba(16, 185, 129, 0.2)',
+                  color: isFlying
+                    ? '#00d4ff'
+                    : activeDrone.status === 'maintenance'
+                    ? '#f59e0b'
+                    : activeDrone.status === 'offline'
+                    ? '#ef4444'
+                    : '#10b981',
+                  border: `1px solid ${
+                    isFlying
+                      ? 'rgba(0, 212, 255, 0.4)'
+                      : activeDrone.status === 'maintenance'
+                      ? 'rgba(245, 158, 11, 0.4)'
+                      : activeDrone.status === 'offline'
+                      ? 'rgba(239, 68, 68, 0.4)'
+                      : 'rgba(16, 185, 129, 0.4)'
+                  }`,
+                }}
+              >
+                {isFlying ? 'IN FLIGHT' : (activeDrone.status || 'AVAILABLE').replace('_', ' ')}
+              </span>
+              {statusFeedback && (
+                <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>
+                  ✓ {statusFeedback}
+                </span>
+              )}
+            </div>
+            <p style={{ margin: '3px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+              Live Telemetry Control • Status changes sync with Fleet Management in real-time
+            </p>
+          </div>
+        </div>
+
+        {/* Quick Status Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, marginRight: '4px' }}>
+            CHANGE STATUS:
+          </span>
+
+          <button
+            onClick={() => handleQuickStatusChange('in_flight')}
+            disabled={updatingStatus || activeDrone.status === 'in_flight'}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '8px',
+              border: activeDrone.status === 'in_flight' ? '1px solid #00d4ff' : '1px solid rgba(255, 255, 255, 0.1)',
+              backgroundColor: activeDrone.status === 'in_flight' ? 'rgba(0, 212, 255, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+              color: activeDrone.status === 'in_flight' ? '#00d4ff' : '#94a3b8',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              cursor: updatingStatus ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Plane size={14} /> IN FLIGHT
+          </button>
+
+          <button
+            onClick={() => handleQuickStatusChange('available')}
+            disabled={updatingStatus || activeDrone.status === 'available'}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '8px',
+              border: activeDrone.status === 'available' ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.1)',
+              backgroundColor: activeDrone.status === 'available' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+              color: activeDrone.status === 'available' ? '#10b981' : '#94a3b8',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              cursor: updatingStatus ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <CheckCircle size={14} /> AVAILABLE
+          </button>
+
+          <button
+            onClick={() => handleQuickStatusChange('maintenance')}
+            disabled={updatingStatus || activeDrone.status === 'maintenance'}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '8px',
+              border: activeDrone.status === 'maintenance' ? '1px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.1)',
+              backgroundColor: activeDrone.status === 'maintenance' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+              color: activeDrone.status === 'maintenance' ? '#f59e0b' : '#94a3b8',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              cursor: updatingStatus ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Wrench size={14} /> MAINTENANCE
+          </button>
+
+          <button
+            onClick={() => handleQuickStatusChange('offline')}
+            disabled={updatingStatus || activeDrone.status === 'offline'}
+            style={{
+              padding: '7px 14px',
+              borderRadius: '8px',
+              border: activeDrone.status === 'offline' ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.1)',
+              backgroundColor: activeDrone.status === 'offline' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(15, 23, 42, 0.8)',
+              color: activeDrone.status === 'offline' ? '#ef4444' : '#94a3b8',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              cursor: updatingStatus ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <PowerOff size={14} /> OFFLINE
+          </button>
+
+          <button
+            onClick={() => navigate('/drones')}
+            style={{
+              padding: '7px 12px',
+              borderRadius: '8px',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              color: '#ffffff',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              marginLeft: '4px',
+            }}
+            title="Open in Drone Fleet Management"
+          >
+            Fleet <ExternalLink size={13} />
+          </button>
+        </div>
       </div>
 
       {/* Real-time Avionics Gauges Grid */}
