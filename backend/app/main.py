@@ -119,9 +119,11 @@ from fastapi.staticfiles import StaticFiles
 
 _root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _frontend_build = os.path.join(_root_dir, "frontend", "build")
+_public_dir = os.path.join(_root_dir, "public")
+_static_root = _frontend_build if os.path.isdir(_frontend_build) else (_public_dir if os.path.isdir(_public_dir) else None)
 
-if os.path.isdir(_frontend_build):
-    _static_assets = os.path.join(_frontend_build, "static")
+if _static_root:
+    _static_assets = os.path.join(_static_root, "static")
     if os.path.isdir(_static_assets):
         app.mount("/static", StaticFiles(directory=_static_assets), name="static")
 
@@ -134,10 +136,10 @@ if os.path.isdir(_frontend_build):
             or full_path.startswith("openapi")
         ):
             return JSONResponse(status_code=404, content={"detail": "Not Found"})
-        target = os.path.join(_frontend_build, full_path)
+        target = os.path.join(_static_root, full_path)
         if os.path.isfile(target):
             return FileResponse(target)
-        return FileResponse(os.path.join(_frontend_build, "index.html"))
+        return FileResponse(os.path.join(_static_root, "index.html"))
 else:
     @app.get("/", include_in_schema=False)
     async def root():
