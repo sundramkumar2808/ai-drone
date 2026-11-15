@@ -46,13 +46,14 @@ async def get_drone_analytics(
 
 @router.get("/export/csv")
 async def export_csv(
-    report_type: str = Query("overview", pattern="^(overview|drones|missions|maintenance)$"),
+    report_type: str = Query("overview"),
     db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Response:
     """Export analytics report as a downloadable CSV file."""
     csv_bytes = await analytics_service.export_report_csv(db, report_type=report_type)
-    filename = f"drone_fleet_{report_type}_report_{datetime.utcnow().strftime('%Y%m%d')}.csv"
+    clean_type = "overview" if ("exec" in report_type.lower() or "overview" in report_type.lower()) else report_type.lower()
+    filename = f"drone_fleet_{clean_type}_report_{datetime.utcnow().strftime('%Y%m%d')}.csv"
     return Response(
         content=csv_bytes,
         media_type="text/csv",
@@ -62,13 +63,14 @@ async def export_csv(
 
 @router.get("/export/pdf")
 async def export_pdf(
-    report_type: str = Query("overview", pattern="^(overview|drones|missions|maintenance)$"),
+    report_type: str = Query("overview"),
     db: Any = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Response:
     """Export analytics report in PDF format."""
     pdf_bytes = await analytics_service.export_report_pdf(db, report_type=report_type)
-    filename = f"drone_fleet_{report_type}_report_{datetime.utcnow().strftime('%Y%m%d')}.pdf"
+    clean_type = "overview" if ("exec" in report_type.lower() or "overview" in report_type.lower()) else report_type.lower()
+    filename = f"drone_fleet_{clean_type}_report_{datetime.utcnow().strftime('%Y%m%d')}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

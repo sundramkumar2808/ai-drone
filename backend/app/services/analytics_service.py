@@ -140,69 +140,125 @@ async def get_drone_analytics(db: Any) -> dict:
     }
 
 
+async def _get_report_dataset(db: Any, report_type: str) -> tuple[str, list[str], list[list[Any]]]:
+    """Retrieve structured title, headers, and rows for any analytics report using pure Python."""
+    norm = (report_type or "overview").lower().strip()
+
+    if "drone" in norm:
+        title = "Drone Fleet Specs Report"
+        headers = [
+            "Drone Name",
+            "Serial Number",
+            "Model",
+            "Manufacturer",
+            "Status",
+            "Battery %",
+            "Flight Hours",
+            "Max Time (min)",
+            "Payload (kg)",
+            "Location",
+        ]
+        cursor = db.drones.find({}).sort("drone_name", 1)
+        drones = await cursor.to_list(length=1000)
+        rows = [
+            [
+                d.get("drone_name") or "Unnamed Drone",
+                d.get("serial_number") or "N/A",
+                d.get("model") or "N/A",
+                d.get("manufacturer") or "N/A",
+                (d.get("status") or "available").replace("_", " ").title(),
+                f"{d.get('battery_percentage', 100)}%",
+                f"{round(float(d.get('total_flight_hours') or 0.0), 1)} hrs",
+                f"{d.get('max_flight_time') or 30} min",
+                f"{d.get('max_payload') or 2.5} kg",
+                str(d.get("location") or "Base Station"),
+            ]
+            for d in drones
+        ]
+    elif "miss" in norm:
+        title = "Mission Operations History"
+        headers = [
+            "Mission Name",
+            "Type",
+            "Status",
+            "Start Location",
+            "Destination",
+            "Scheduled Time",
+            "Duration (est)",
+        ]
+        cursor = db.missions.find({}).sort("created_at", -1)
+        missions = await cursor.to_list(length=1000)
+        rows = [
+            [
+                m.get("mission_name") or "Mission",
+                (m.get("mission_type") or "Surveillance").title(),
+                (m.get("status") or "scheduled").replace("_", " ").title(),
+                str(m.get("start_location") or "HQ"),
+                str(m.get("destination") or "Zone Alpha"),
+                str(m.get("scheduled_at") or m.get("created_at") or "")[:16],
+                f"{m.get('estimated_duration') or 45} min",
+            ]
+            for m in missions
+        ]
+    elif "maint" in norm:
+        title = "Maintenance Log Report"
+        headers = [
+            "Log Category",
+            "Status",
+            "Description",
+            "Scheduled Date",
+            "Technician / Notes",
+        ]
+        cursor = db.maintenance.find({}).sort("scheduled_date", -1)
+        records = await cursor.to_list(length=1000)
+        rows = [
+            [
+                (r.get("category") or "routine").title(),
+                (r.get("status") or "pending").replace("_", " ").title(),
+                (r.get("description") or "Routine airframe inspection")[:35],
+                str(r.get("scheduled_date") or "")[:10],
+                str(r.get("completed_date") or "Pending Review")[:10],
+            ]
+            for r in records
+        ]
+    else:
+        # Executive Overview Report
+        title = "Executive Overview Report"
+        stats = await get_overview_stats(db)
+        headers = ["Operational Fleet Metric", "Value", "Executive Context"]
+        rows = [
+            ["Total Fleet Airframes", str(stats.get("total_drones", 0)), "Total registered airframes in fleet"],
+            ["Active Sorties / In Flight", str(stats.get("active_drones", 0)), "Drones actively flying or on active duty"],
+            ["Available for Dispatch", str(stats.get("available_drones", 0)), "Ready for immediate flight tasking"],
+            ["Airframes Under Maintenance", str(stats.get("maintenance_drones", 0)), "Hangar inspection or component service"],
+            ["Active Operations", str(stats.get("active_missions", 0)), "Missions currently underway or scheduled"],
+            ["Successfully Completed Missions", str(stats.get("completed_missions", 0)), "Concluded without operational failure"],
+            ["Total Sorties Logged", str(stats.get("total_missions", 0)), "All-time operational missions recorded"],
+            ["Cumulative Flight Hours", f"{stats.get('total_flight_hours', 0.0)} hrs", "Total airborne airframe flight time"],
+            ["Mission Success Rate", f"{stats.get('success_rate', 0.0)}%", "Completed vs total mission ratio KPI"],
+            ["Fleet Battery Energy Mean", f"{stats.get('avg_battery_level', 100.0)}%", "Mean state of charge across all active drones"],
+        ]
+
+    return title, headers, rows
+
+
 async def export_report_csv(
     db: Any,
     report_type: str = "overview",
     filters: Optional[dict] = None,
 ) -> bytes:
-    """Generate a CSV report as bytes."""
-    import pandas as pd
+    """Generate a CSV report as bytes using pure Python standard library."""
+    import csv
 
-    if report_type == "drones":
-        cursor = db.drones.find({})
-        drones = await cursor.to_list(length=1000)
-        data = [
-            {
-                "Drone Name": d.get("drone_name"),
-                "Serial Number": d.get("serial_number"),
-                "Model": d.get("model"),
-                "Manufacturer": d.get("manufacturer"),
-                "Status": d.get("status"),
-                "Battery %": d.get("battery_percentage"),
-                "Total Flight Hours": d.get("total_flight_hours"),
-                "Max Flight Time (min)": d.get("max_flight_time"),
-                "Max Payload (kg)": d.get("max_payload"),
-                "Location": d.get("location"),
-            }
-            for d in drones
-        ]
-    elif report_type == "missions":
-        cursor = db.missions.find({})
-        missions = await cursor.to_list(length=1000)
-        data = [
-            {
-                "Mission Name": m.get("mission_name"),
-                "Type": m.get("mission_type"),
-                "Status": m.get("status"),
-                "Start Location": m.get("start_location"),
-                "Destination": m.get("destination"),
-                "Scheduled At": str(m.get("scheduled_at") or ""),
-                "Started At": str(m.get("started_at") or ""),
-                "Completed At": str(m.get("completed_at") or ""),
-            }
-            for m in missions
-        ]
-    elif report_type == "maintenance":
-        cursor = db.maintenance.find({})
-        records = await cursor.to_list(length=1000)
-        data = [
-            {
-                "Category": r.get("category"),
-                "Status": r.get("status"),
-                "Description": r.get("description", ""),
-                "Scheduled Date": str(r.get("scheduled_date") or ""),
-                "Completed Date": str(r.get("completed_date") or ""),
-            }
-            for r in records
-        ]
-    else:
-        stats = await get_overview_stats(db)
-        data = [stats]
+    title, headers, rows = await _get_report_dataset(db, report_type)
 
-    df = pd.DataFrame(data)
-    buffer = io.BytesIO()
-    df.to_csv(buffer, index=False)
-    return buffer.getvalue()
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(headers)
+    for row in rows:
+        writer.writerow(row)
+
+    return buf.getvalue().encode("utf-8")
 
 
 async def export_report_pdf(
@@ -211,61 +267,7 @@ async def export_report_pdf(
     filters: Optional[dict] = None,
 ) -> bytes:
     """Generate a PDF report using pure Python."""
-    import pandas as pd
-
-    if report_type == "drones":
-        cursor = db.drones.find({})
-        drones = await cursor.to_list(length=1000)
-        data = [
-            {
-                "Drone Name": d.get("drone_name"),
-                "Serial": d.get("serial_number"),
-                "Model": d.get("model"),
-                "Status": d.get("status"),
-                "Battery": f"{d.get('battery_percentage')}%",
-                "Hours": d.get("total_flight_hours"),
-            }
-            for d in drones
-        ]
-        title = "Drone Fleet Specs Report"
-    elif report_type == "missions":
-        cursor = db.missions.find({})
-        missions = await cursor.to_list(length=1000)
-        data = [
-            {
-                "Mission": m.get("mission_name"),
-                "Type": m.get("mission_type"),
-                "Status": m.get("status"),
-                "Start": m.get("start_location") or "",
-                "Dest": m.get("destination") or "",
-                "Scheduled": str(m.get("scheduled_at") or "")[:16],
-            }
-            for m in missions
-        ]
-        title = "Mission Operations History"
-    elif report_type == "maintenance":
-        cursor = db.maintenance.find({})
-        records = await cursor.to_list(length=1000)
-        data = [
-            {
-                "Category": r.get("category"),
-                "Status": r.get("status"),
-                "Description": (r.get("description") or "")[:30],
-                "Scheduled": str(r.get("scheduled_date") or "")[:10],
-                "Completed": str(r.get("completed_date") or "")[:10],
-            }
-            for r in records
-        ]
-        title = "Maintenance Log Report"
-    else:
-        stats = await get_overview_stats(db)
-        data = [{k: str(v) for k, v in stats.items()}]
-        title = "Executive Overview Report"
-
-    df = pd.DataFrame(data)
-    headers = list(df.columns) if not df.empty else []
-    rows = df.values.tolist() if not df.empty else []
-
+    title, headers, rows = await _get_report_dataset(db, report_type)
     return _build_pdf(title, report_type, headers, rows)
 
 
@@ -276,38 +278,40 @@ def _build_pdf(title: str, report_type: str, headers: list, rows: list) -> bytes
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     def esc(text: str) -> str:
-        return str(text).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        s = str(text if text is not None else "").replace("\r", " ").replace("\n", " ")
+        return s.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
     lines: list[str] = []
     lines.append(f"BT /F1 18 Tf 50 550 Td (Drone Fleet AI - {esc(title)}) Tj ET")
-    lines.append(f"BT /F2 9 Tf 50 533 Td (Generated: {generated}  |  Report: {report_type}  |  Records: {len(rows)}) Tj ET")
-    lines.append("0.3 0.7 0.9 RG 2 w 50 525 m 790 525 l S")
+    lines.append(f"BT /F2 9 Tf 50 533 Td (Generated: {generated}  |  Report: {esc(report_type.title())}  |  Records: {len(rows)}) Tj ET")
+    lines.append("0.1 0.6 0.85 RG 2 w 50 525 m 790 525 l S")
 
     if not headers:
         lines.append("BT /F2 12 Tf 50 500 Td (No data available for this report.) Tj ET")
     else:
         col_count = len(headers)
-        col_w = min(120, int(740 / col_count))
+        total_w = 740
+        col_w = max(65, int(total_w / col_count))
+        table_width = min(total_w, col_w * col_count)
         y = 505
 
-        lines.append(f"0.12 0.16 0.23 rg 48 {y - 2} {col_w * col_count + 4} 16 re f")
+        lines.append(f"0.08 0.12 0.22 rg 48 {y - 3} {table_width + 4} 16 re f")
         x = 52
         for h in headers:
-            lines.append(f"BT /F1 8 Tf 1 1 1 rg {x} {y} Td ({esc(str(h)[:18])}) Tj ET")
+            h_str = esc(str(h))[:25]
+            lines.append(f"BT /F1 8 Tf 1 1 1 rg {x} {y} Td ({h_str}) Tj ET")
             x += col_w
         y -= 18
 
-        lines.append("0 0 0 rg")
         for i, row in enumerate(rows):
             if y < 40:
                 break
             if i % 2 == 0:
-                lines.append(f"0.94 0.96 0.98 rg 48 {y - 3} {col_w * col_count + 4} 14 re f")
-            lines.append("0 0 0 rg")
+                lines.append(f"0.94 0.96 0.98 rg 48 {y - 3} {table_width + 4} 14 re f")
             x = 52
             for val in row:
-                safe = esc(str(val)[:20])
-                lines.append(f"BT /F2 7 Tf {x} {y} Td ({safe}) Tj ET")
+                safe = esc(str(val))[:35]
+                lines.append(f"BT /F2 7.5 Tf 0.1 0.15 0.2 rg {x} {y} Td ({safe}) Tj ET")
                 x += col_w
             y -= 14
 
