@@ -1,16 +1,16 @@
-# AI-Assisted Drone Fleet Management Platform
+﻿# AI-Assisted Drone Fleet Management Platform
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0-009688.svg?style=flat&logo=FastAPI)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-18.2.0-61DAFB.svg?style=flat&logo=React)](https://reactjs.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1.svg?style=flat&logo=PostgreSQL)](https://www.postgresql.org/)
+[![PostgreSQL](https://img.shields.io/badge/MongoDB-7.0-13aa52.svg?style=flat&logo=MongoDB)](https://www.mongodb.com/)
 [![Google Gemini](https://img.shields.io/badge/Google%20Gemini-1.5%20Flash-4285F4.svg?style=flat&logo=google)](https://aistudio.google.com/)
 [![Docker](https://img.shields.io/badge/Dockerfiles-Included-2496ED.svg?style=flat&logo=docker)](https://www.docker.com/)
 
-An enterprise-grade commercial autonomous drone fleet management SaaS web application built with **React.js**, **FastAPI**, **PostgreSQL**, **Redis**, **Pandas**, and **Google Gemini AI**.
+An enterprise-grade commercial autonomous drone fleet management SaaS web application built with **React.js**, **FastAPI**, **MongoDB**, **Redis**, and **Google Gemini AI**.
 
 ---
 
-## 🌟 Key Features
+## ðŸŒŸ Key Features
 
 1. **Futuristic Commercial SaaS Interface**
    - Dark navy and obsidian gradients with cyan, electric blue, and purple neon accents.
@@ -41,7 +41,7 @@ An enterprise-grade commercial autonomous drone fleet management SaaS web applic
 5. **Mission Planning & Scheduling**
    - Multi-category sorties: Surveillance, Agriculture, Delivery, Mapping, Search and Rescue, Inspection.
    - Geofence waypoint coordinates, scheduled departure times, and automated drone status synchronization.
-   - State machine workflow: `pending` → `scheduled` → `in_progress` → `completed` / `cancelled`.
+   - State machine workflow: `pending` â†’ `scheduled` â†’ `in_progress` â†’ `completed` / `cancelled`.
 
 6. **Real-Time Telemetry & Radar Simulation**
    - High-frequency avionics stream over **WebSockets** (`/ws/telemetry`).
@@ -67,7 +67,7 @@ An enterprise-grade commercial autonomous drone fleet management SaaS web applic
 
 ---
 
-## 🚀 Pre-Configured Demo Accounts
+## ðŸš€ Pre-Configured Demo Accounts
 
 After database seeding, use any of these accounts to log in:
 
@@ -80,11 +80,11 @@ After database seeding, use any of these accounts to log in:
 
 ---
 
-## 🛠️ Technology Stack
+## ðŸ› ï¸ Technology Stack
 
 - **Frontend**: React 18, React Router v6, Recharts, Lucide React, Axios.
 - **Backend**: Python 3.11, FastAPI, SQLAlchemy 2.0 (Async), Pydantic v2, Uvicorn, WebSockets.
-- **Databases**: PostgreSQL 15 (or SQLite with aiosqlite for standalone execution), Redis 7.
+- **Databases**: MongoDB 7.0 (via Motor AsyncIO driver with built-in zero-config offline fallback), Redis 7.
 - **Data Science & AI**: Pandas, Google Gemini API (`google-generativeai`).
 - **Containerization**: Backend and frontend Dockerfiles.
 
@@ -189,7 +189,7 @@ npm run build
 
 ---
 
-## 🧪 Automated Testing
+## ðŸ§ª Automated Testing
 
 Run the backend tests from the `backend` folder:
 
@@ -205,52 +205,52 @@ Tests verify:
 - Mission assignment & scheduling
 - Live telemetry access control
 
-The frontend currently has no test files. Its `npm test -- --watchAll=false` command will report “No tests found” until frontend tests are added.
+The frontend currently has no test files. Its `npm test -- --watchAll=false` command will report â€œNo tests foundâ€ until frontend tests are added.
 
 ### Postman API Testing
 Import `postman_collection.json` located at the project root into Postman to test all endpoints.
 
 ---
 
-## 📁 Project Architecture
+## ðŸ“ Project Architecture
 
 ```
 drone-fleet-manager/
-├── backend/
-│   ├── app/
-│   │   ├── main.py                  # FastAPI Entry & Lifespan
-│   │   ├── api/
-│   │   │   ├── deps.py              # JWT & RBAC Role Guards
-│   │   │   └── endpoints/           # 9 Router Modules
-│   │   ├── core/                    # Security, Config & OAuth
-│   │   ├── database/                # Async Engine, Session & Seeder
-│   │   ├── middleware/              # Rate Limiter
-│   │   ├── models/                  # SQLAlchemy 2.0 Entities
-│   │   ├── schemas/                 # Pydantic v2 Schemas
-│   │   ├── services/                # Business Logic & Telemetry Loop
-│   │   └── utils/                   # Helpers
-│   ├── tests/                       # Automated Pytest Suite
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── public/
-│   ├── src/
-│   │   ├── components/              # Common UI, AI Chatbot, Cards
-│   │   ├── context/                 # AuthContext
-│   │   ├── hooks/                   # useWebSocket
-│   │   ├── layouts/                 # MainLayout & AuthLayout
-│   │   ├── pages/                   # 16 Complete Pages
-│   │   ├── services/                # 8 Axios API Services
-│   │   └── styles/                  # Global Theme Styles
-│   ├── Dockerfile
-│   └── nginx.conf
-├── postman_collection.json
-└── README.md
+â”œâ”€â”€ backend/
+â”‚   â”œâ”€â”€ app/
+â”‚   â”‚   â”œâ”€â”€ main.py                  # FastAPI Entry & Lifespan
+â”‚   â”‚   â”œâ”€â”€ api/
+â”‚   â”‚   â”‚   â”œâ”€â”€ deps.py              # JWT & RBAC Role Guards
+â”‚   â”‚   â”‚   â””â”€â”€ endpoints/           # 9 Router Modules
+â”‚   â”‚   â”œâ”€â”€ core/                    # Security, Config & OAuth
+â”‚   â”‚   â”œâ”€â”€ database/                # Async Engine, Session & Seeder
+â”‚   â”‚   â”œâ”€â”€ middleware/              # Rate Limiter
+â”‚   â”‚   â”œâ”€â”€ models/                  # SQLAlchemy 2.0 Entities
+â”‚   â”‚   â”œâ”€â”€ schemas/                 # Pydantic v2 Schemas
+â”‚   â”‚   â”œâ”€â”€ services/                # Business Logic & Telemetry Loop
+â”‚   â”‚   â””â”€â”€ utils/                   # Helpers
+â”‚   â”œâ”€â”€ tests/                       # Automated Pytest Suite
+â”‚   â”œâ”€â”€ Dockerfile
+â”‚   â””â”€â”€ requirements.txt
+â”œâ”€â”€ frontend/
+â”‚   â”œâ”€â”€ public/
+â”‚   â”œâ”€â”€ src/
+â”‚   â”‚   â”œâ”€â”€ components/              # Common UI, AI Chatbot, Cards
+â”‚   â”‚   â”œâ”€â”€ context/                 # AuthContext
+â”‚   â”‚   â”œâ”€â”€ hooks/                   # useWebSocket
+â”‚   â”‚   â”œâ”€â”€ layouts/                 # MainLayout & AuthLayout
+â”‚   â”‚   â”œâ”€â”€ pages/                   # 16 Complete Pages
+â”‚   â”‚   â”œâ”€â”€ services/                # 8 Axios API Services
+â”‚   â”‚   â””â”€â”€ styles/                  # Global Theme Styles
+â”‚   â”œâ”€â”€ Dockerfile
+â”‚   â””â”€â”€ nginx.conf
+â”œâ”€â”€ postman_collection.json
+â””â”€â”€ README.md
 ```
 
 ---
 
-## 📄 License
+## ðŸ“„ License
 MIT License. Developed for University Demonstration & Commercial Research.
 "# ai-drone" 
 "# ai-drone" 

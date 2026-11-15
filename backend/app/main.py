@@ -99,12 +99,6 @@ app.include_router(admin.router)
 app.include_router(ai_chat.router)
 
 
-@app.get("/", include_in_schema=False)
-async def root():
-    """Redirect root to OpenAPI Swagger documentation."""
-    return RedirectResponse(url="/api/docs")
-
-
 @app.get("/api/health", tags=["Health"], status_code=status.HTTP_200_OK)
 async def health_check():
     """Report API health and verify MongoDB connectivity."""
@@ -116,3 +110,36 @@ async def health_check():
         "version": "1.0.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# Static frontend hosting for unified cloud deployments (Render, Railway, Docker, Local)
+import os
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+_root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_frontend_build = os.path.join(_root_dir, "frontend", "build")
+
+if os.path.isdir(_frontend_build):
+    _static_assets = os.path.join(_frontend_build, "static")
+    if os.path.isdir(_static_assets):
+        app.mount("/static", StaticFiles(directory=_static_assets), name="static")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend(full_path: str):
+        if (
+            full_path.startswith("api")
+            or full_path.startswith("docs")
+            or full_path.startswith("redoc")
+            or full_path.startswith("openapi")
+        ):
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+        target = os.path.join(_frontend_build, full_path)
+        if os.path.isfile(target):
+            return FileResponse(target)
+        return FileResponse(os.path.join(_frontend_build, "index.html"))
+else:
+    @app.get("/", include_in_schema=False)
+    async def root():
+        """Redirect root to OpenAPI Swagger documentation."""
+        return RedirectResponse(url="/api/docs")

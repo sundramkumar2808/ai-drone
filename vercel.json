@@ -19,20 +19,11 @@
       "dest": "api/index.py"
     },
     {
-      "src": "/static/(.*)",
-      "dest": "frontend/static/$1"
-    },
-    {
-      "src": "/favicon.ico",
-      "dest": "frontend/favicon.ico"
-    },
-    {
-      "src": "/manifest.json",
-      "dest": "frontend/manifest.json"
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
-      "dest": "frontend/index.html"
+      "dest": "/index.html"
     }
   ]
 }

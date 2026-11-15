@@ -320,7 +320,7 @@ const AdminPage = () => {
             <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase' }}>
               {stats.database_status}
             </div>
-            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>PostgreSQL 15</span>
+            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>MongoDB 7.0</span>
           </div>
           <div style={statTileStyle}>
             <span style={{ fontSize: '0.8rem', color: '#64748b' }}>TELEMETRY STREAM</span>

@@ -140,7 +140,7 @@ const LandingPage = () => {
   const techStack = [
     { name: 'React', color: '#61dafb', icon: '⚛️' },
     { name: 'FastAPI', color: '#009688', icon: '⚡' },
-    { name: 'PostgreSQL', color: '#336791', icon: '🐘' },
+    { name: 'MongoDB', color: '#13aa52', icon: '🍃' },
     { name: 'Redis', color: '#dc382d', icon: '🔴' },
     { name: 'Docker', color: '#2496ed', icon: '🐳' },
     { name: 'Gemini AI', color: '#8b5cf6', icon: '🤖' },
