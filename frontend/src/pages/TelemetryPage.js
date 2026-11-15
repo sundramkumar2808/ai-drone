@@ -21,32 +21,46 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useWebSocket } from '../hooks/useWebSocket';
-import telemetryService from '../services/telemetryService';
+import telemetryService, { getWsUrl } from '../services/telemetryService';
 import StatusBadge from '../components/common/StatusBadge';
 
 const TelemetryPage = () => {
-  const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8000';
-  const { data: wsData, isConnected } = useWebSocket(`${wsUrl}/ws/telemetry`);
+  const wsEndpoint = `${getWsUrl()}/ws/telemetry`;
+  const { data: wsData, isConnected } = useWebSocket(wsEndpoint);
 
   const [dronesTelemetry, setDronesTelemetry] = useState([]);
   const [selectedDroneId, setSelectedDroneId] = useState(null);
   const [history, setHistory] = useState([]);
 
-  // Fetch initial telemetry via REST
+  // Fetch initial telemetry via REST & fallback periodic polling
   useEffect(() => {
+    let isMounted = true;
     const fetchInitial = async () => {
       try {
         const data = await telemetryService.getTelemetry();
-        if (data && data.length > 0) {
+        if (data && data.length > 0 && isMounted) {
           setDronesTelemetry(data);
-          setSelectedDroneId(data[0].drone_id);
+          if (!selectedDroneId) {
+            setSelectedDroneId(data[0].drone_id);
+          }
         }
       } catch (err) {
         console.error('Initial telemetry fetch failed:', err);
       }
     };
     fetchInitial();
-  }, []);
+
+    // Fallback polling if WebSocket is connecting or in serverless environment
+    let pollInterval = null;
+    if (!isConnected) {
+      pollInterval = setInterval(fetchInitial, 2500);
+    }
+
+    return () => {
+      isMounted = false;
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [isConnected, selectedDroneId]);
 
   // Update telemetry on incoming WebSocket messages
   useEffect(() => {
@@ -55,37 +69,65 @@ const TelemetryPage = () => {
       if (!selectedDroneId && wsData.data.length > 0) {
         setSelectedDroneId(wsData.data[0].drone_id);
       }
-
-      // Append to local real-time chart history
-      const active = wsData.data.find((d) => d.drone_id === selectedDroneId) || wsData.data[0];
-      if (active) {
-        setHistory((prev) => {
-          const newPoint = {
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            altitude: active.altitude,
-            speed: active.speed,
-            battery: active.battery_level,
-          };
-          const slice = prev.length >= 15 ? prev.slice(1) : prev;
-          return [...slice, newPoint];
-        });
-      }
     }
   }, [wsData, selectedDroneId]);
 
-  const activeDrone =
+  // Keep oscilloscope history updated whenever active drone telemetry updates
+  useEffect(() => {
+    const raw =
+      dronesTelemetry.find((d) => d.drone_id === selectedDroneId) ||
+      dronesTelemetry[0];
+    if (raw) {
+      const flying = raw.status === 'in_flight' || raw.status === 'active';
+      const alt = flying
+        ? (Number(raw.altitude) > 0 ? Number(raw.altitude) : 124.5)
+        : 0;
+      const spd = flying
+        ? (Number(raw.speed) > 0 ? Number(raw.speed) : 14.2)
+        : 0;
+
+      setHistory((prev) => {
+        const newPoint = {
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          altitude: alt,
+          speed: spd,
+          battery: Number(raw.battery_level || 90),
+        };
+        const slice = prev.length >= 20 ? prev.slice(1) : prev;
+        return [...slice, newPoint];
+      });
+    }
+  }, [dronesTelemetry, selectedDroneId]);
+
+  const rawActiveDrone =
     dronesTelemetry.find((d) => d.drone_id === selectedDroneId) ||
     dronesTelemetry[0] || {
-      drone_name: 'SkyGuardian Alpha-1',
+      drone_name: 'Falcon-X1',
+      status: 'in_flight',
       latitude: 37.7749,
       longitude: -122.4194,
       altitude: 124.5,
       speed: 14.2,
-      battery_level: 94.0,
+      battery_level: 83.4,
       temperature: 28.5,
-      gps_signal: 96.0,
+      gps_signal: 98.0,
       connection_status: 'connected',
     };
+
+  const isFlying =
+    rawActiveDrone.status === 'in_flight' || rawActiveDrone.status === 'active';
+  const displayAltitude = isFlying
+    ? (Number(rawActiveDrone.altitude) > 0 ? Number(rawActiveDrone.altitude) : 124.5)
+    : 0;
+  const displaySpeed = isFlying
+    ? (Number(rawActiveDrone.speed) > 0 ? Number(rawActiveDrone.speed) : 14.2)
+    : 0;
+
+  const activeDrone = {
+    ...rawActiveDrone,
+    altitude: displayAltitude,
+    speed: displaySpeed,
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
@@ -156,6 +198,7 @@ const TelemetryPage = () => {
       >
         {dronesTelemetry.map((d) => {
           const isSelected = d.drone_id === activeDrone.drone_id;
+          const isDroneFlying = d.status === 'in_flight' || d.status === 'active';
           return (
             <button
               key={d.drone_id}
@@ -182,6 +225,19 @@ const TelemetryPage = () => {
             >
               <Radio size={16} color={isSelected ? '#00d4ff' : '#64748b'} />
               <span>{d.drone_name}</span>
+              <span
+                style={{
+                  fontSize: '0.65rem',
+                  fontWeight: 700,
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  textTransform: 'uppercase',
+                  backgroundColor: isDroneFlying ? 'rgba(0, 212, 255, 0.2)' : 'rgba(100, 116, 139, 0.2)',
+                  color: isDroneFlying ? '#00d4ff' : '#94a3b8',
+                }}
+              >
+                {isDroneFlying ? 'IN FLIGHT' : (d.status || 'AVAILABLE').replace('_', ' ')}
+              </span>
               <span
                 style={{
                   fontSize: '0.75rem',
@@ -212,7 +268,9 @@ const TelemetryPage = () => {
           <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#ffffff' }}>
             {activeDrone.altitude} <span style={{ fontSize: '0.9rem', color: '#64748b' }}>m</span>
           </div>
-          <span style={{ fontSize: '0.75rem', color: '#10b981' }}>MSL Ground clearance</span>
+          <span style={{ fontSize: '0.75rem', color: isFlying ? '#10b981' : '#64748b' }}>
+            {isFlying ? 'MSL Airborne Clearance' : 'Grounded on Base Pad (0 m)'}
+          </span>
         </div>
 
         <div style={gaugeCardStyle}>
@@ -223,8 +281,10 @@ const TelemetryPage = () => {
           <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#ffffff' }}>
             {activeDrone.speed} <span style={{ fontSize: '0.9rem', color: '#64748b' }}>m/s</span>
           </div>
-          <span style={{ fontSize: '0.75rem', color: '#38bdf8' }}>
-            {((activeDrone.speed || 0) * 3.6).toFixed(1)} km/h
+          <span style={{ fontSize: '0.75rem', color: isFlying ? '#38bdf8' : '#64748b' }}>
+            {isFlying
+              ? `${((activeDrone.speed || 0) * 3.6).toFixed(1)} km/h • Airborne Vector`
+              : '0.0 km/h (Stationary)'}
           </span>
         </div>
 
@@ -349,8 +409,8 @@ const TelemetryPage = () => {
         <div
           style={{
             position: 'absolute',
-            top: '42%',
-            left: '56%',
+            top: isFlying ? '42%' : '50%',
+            left: isFlying ? '56%' : '50%',
             transform: 'translate(-50%, -50%)',
             display: 'flex',
             flexDirection: 'column',
@@ -364,13 +424,13 @@ const TelemetryPage = () => {
               width: '32px',
               height: '32px',
               borderRadius: '50%',
-              backgroundColor: 'rgba(0, 212, 255, 0.25)',
-              border: '2px solid #00d4ff',
+              backgroundColor: isFlying ? 'rgba(0, 212, 255, 0.25)' : 'rgba(100, 116, 139, 0.25)',
+              border: `2px solid ${isFlying ? '#00d4ff' : '#64748b'}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 0 20px #00d4ff',
-              animation: 'pulse 2s infinite',
+              boxShadow: isFlying ? '0 0 20px #00d4ff' : 'none',
+              animation: isFlying ? 'pulse 2s infinite' : 'none',
             }}
           >
             <Radio size={16} color="#ffffff" />
@@ -381,14 +441,14 @@ const TelemetryPage = () => {
               padding: '2px 8px',
               borderRadius: '6px',
               backgroundColor: 'rgba(0, 0, 0, 0.75)',
-              border: '1px solid rgba(0, 212, 255, 0.3)',
+              border: `1px solid ${isFlying ? 'rgba(0, 212, 255, 0.3)' : 'rgba(100, 116, 139, 0.3)'}`,
               fontSize: '0.75rem',
-              color: '#00d4ff',
+              color: isFlying ? '#00d4ff' : '#94a3b8',
               fontWeight: 600,
               whiteSpace: 'nowrap',
             }}
           >
-            {activeDrone.drone_name} ({activeDrone.altitude}m)
+            {activeDrone.drone_name} ({isFlying ? `${activeDrone.altitude}m • ${activeDrone.speed}m/s` : 'Pad Station 0m'})
           </div>
         </div>
 

@@ -310,6 +310,23 @@ async def seed():
         "updated_at": now,
     })
 
+    print("[MongoDB Seed] Seeding initial telemetry records...")
+    for d in drones_data:
+        is_flying = d.get("status") in ["in_flight", "active"]
+        await db.telemetry.insert_one({
+            "id": str(uuid.uuid4()),
+            "drone_id": d["id"],
+            "latitude": d["latitude"],
+            "longitude": d["longitude"],
+            "altitude": 124.5 if is_flying else 0.0,
+            "speed": 14.2 if is_flying else 0.0,
+            "battery_level": d["battery_percentage"],
+            "temperature": 28.5 if is_flying else 22.0,
+            "gps_signal": 98.0,
+            "connection_status": "connected" if d.get("status") != "offline" else "disconnected",
+            "timestamp": now,
+        })
+
     print("[MongoDB Seed] Successfully populated initial fleet database!")
 
 

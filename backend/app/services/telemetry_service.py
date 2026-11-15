@@ -42,37 +42,59 @@ async def get_all_latest_telemetry(db: Any) -> List[dict]:
     latest_list = []
     for d in drones:
         drone_id = str(d.get("id"))
+        status = d.get("status", "available")
+        is_flying = status in ["in_flight", "active"]
+
+        # Check live simulated state
+        sim_data = telemetry_simulator.get_drone_state(drone_id, d)
+        if sim_data:
+            latest_list.append(sim_data)
+            continue
+
         latest = await get_latest_telemetry(db, drone_id)
         if latest:
+            alt = latest.altitude
+            spd = latest.speed
+            if is_flying:
+                if alt is None or alt <= 0.0:
+                    alt = round(random.uniform(110.0, 145.0), 1)
+                if spd is None or spd <= 0.0:
+                    spd = round(random.uniform(12.0, 16.5), 1)
+            else:
+                alt = 0.0
+                spd = 0.0
+
             latest_list.append({
                 "drone_id": drone_id,
                 "drone_name": d.get("drone_name", "Drone"),
                 "model": d.get("model", ""),
-                "status": d.get("status", "available"),
+                "status": status,
                 "latitude": latest.latitude or d.get("latitude") or 37.7749,
                 "longitude": latest.longitude or d.get("longitude") or -122.4194,
-                "altitude": latest.altitude or 100.0,
-                "speed": latest.speed or 12.5,
+                "altitude": alt,
+                "speed": spd,
                 "battery_level": latest.battery_level or d.get("battery_percentage", 100.0),
-                "temperature": latest.temperature or 24.5,
-                "gps_signal": latest.gps_signal or 95.0,
-                "connection_status": latest.connection_status or "connected",
+                "temperature": latest.temperature or (28.5 if is_flying else 22.0),
+                "gps_signal": latest.gps_signal or 98.0,
+                "connection_status": latest.connection_status or ("connected" if status != "offline" else "disconnected"),
                 "timestamp": latest.timestamp.isoformat() if hasattr(latest.timestamp, "isoformat") else str(latest.timestamp),
             })
         else:
+            alt = round(random.uniform(110.0, 145.0), 1) if is_flying else 0.0
+            spd = round(random.uniform(12.0, 16.5), 1) if is_flying else 0.0
             latest_list.append({
                 "drone_id": drone_id,
                 "drone_name": d.get("drone_name", "Drone"),
                 "model": d.get("model", ""),
-                "status": d.get("status", "available"),
+                "status": status,
                 "latitude": d.get("latitude") or 37.7749,
                 "longitude": d.get("longitude") or -122.4194,
-                "altitude": 0.0,
-                "speed": 0.0,
+                "altitude": alt,
+                "speed": spd,
                 "battery_level": d.get("battery_percentage", 100.0),
-                "temperature": 22.0,
+                "temperature": 28.5 if is_flying else 22.0,
                 "gps_signal": 98.0,
-                "connection_status": "connected" if d.get("status") != "offline" else "disconnected",
+                "connection_status": "connected" if status != "offline" else "disconnected",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
     return latest_list
@@ -120,6 +142,15 @@ class TelemetrySimulator:
         self._db_getter = None
         self._drone_states = {}
 
+    def get_drone_state(self, drone_id: str, drone: Optional[dict] = None) -> Optional[dict]:
+        """Get live simulated state for a drone."""
+        key = str(drone_id)
+        if key in self._drone_states:
+            return self._drone_states[key]
+        if drone:
+            return self._generate_telemetry(drone)
+        return None
+
     def start(self, db_getter):
         """Start the telemetry background loop."""
         if not self._running:
@@ -146,23 +177,45 @@ class TelemetrySimulator:
                     if asyncio.iscoroutine(db):
                         db = await db
 
-                    cursor = db.drones.find({"status": {"$in": ["in_flight", "active", "available"]}})
-                    drones = await cursor.to_list(length=100)
+                    cursor = db.drones.find({})
+                    drones = await cursor.to_list(length=200)
 
                     telemetry_batch = []
                     for drone in drones:
                         data = self._generate_telemetry(drone)
                         telemetry_batch.append(data)
 
-                        if drone.get("status") == "in_flight":
+                        drone_id = str(drone.get("id"))
+                        status = drone.get("status", "available")
+                        is_flying = status in ["in_flight", "active"]
+
+                        if is_flying:
                             await db.drones.update_one(
-                                {"id": str(drone.get("id"))},
+                                {"id": drone_id},
                                 {"$set": {
                                     "latitude": data["latitude"],
                                     "longitude": data["longitude"],
                                     "battery_percentage": data["battery_level"]
                                 }}
                             )
+
+                        # Upsert telemetry record in DB
+                        await db.telemetry.update_one(
+                            {"drone_id": drone_id},
+                            {"$set": {
+                                "drone_id": drone_id,
+                                "latitude": data["latitude"],
+                                "longitude": data["longitude"],
+                                "altitude": data["altitude"],
+                                "speed": data["speed"],
+                                "battery_level": data["battery_level"],
+                                "temperature": data["temperature"],
+                                "gps_signal": data["gps_signal"],
+                                "connection_status": data["connection_status"],
+                                "timestamp": datetime.now(timezone.utc),
+                            }},
+                            upsert=True,
+                        )
 
                     # Broadcast to connected WebSocket clients
                     if telemetry_batch and ws_connections:
@@ -187,22 +240,31 @@ class TelemetrySimulator:
         drone_key = str(drone.get("id"))
         state = self._drone_states.get(drone_key)
         status = drone.get("status", "available")
+        is_flying = status in ["in_flight", "active"]
 
-        if state is None:
+        if state is None or not isinstance(state, dict):
+            initial_alt = round(random.uniform(95.0, 145.0), 1) if is_flying else 0.0
+            initial_speed = round(random.uniform(11.0, 17.5), 1) if is_flying else 0.0
             state = {
                 "latitude": float(drone.get("latitude") or 37.7749),
                 "longitude": float(drone.get("longitude") or -122.4194),
-                "altitude": 120.0 if status == "in_flight" else 0.0,
-                "speed": random.uniform(10, 18) if status == "in_flight" else 0.0,
+                "altitude": initial_alt,
+                "speed": initial_speed,
                 "heading": random.uniform(0, 360),
-                "battery_level": float(drone.get("battery_percentage") or 100.0),
-                "temperature": random.uniform(22, 34),
-                "gps_signal": random.uniform(88, 100),
+                "battery_level": float(drone.get("battery_percentage") or 90.0),
+                "temperature": round(random.uniform(25.0, 32.0), 1) if is_flying else 22.0,
+                "gps_signal": round(random.uniform(92.0, 99.0), 1),
             }
             self._drone_states[drone_key] = state
 
-        if status == "in_flight":
-            state["heading"] = (state["heading"] + random.uniform(-10, 10)) % 360
+        if is_flying:
+            # Ensure in-flight drone always has realistic cruising altitude & ground speed
+            if state.get("altitude", 0.0) <= 0.0:
+                state["altitude"] = round(random.uniform(105.0, 145.0), 1)
+            if state.get("speed", 0.0) <= 0.0:
+                state["speed"] = round(random.uniform(11.5, 17.0), 1)
+
+            state["heading"] = (state.get("heading", 0.0) + random.uniform(-8, 8)) % 360
             heading_rad = math.radians(state["heading"])
             speed_ms = state["speed"]
             dt = 2.5
@@ -215,16 +277,22 @@ class TelemetrySimulator:
             state["latitude"] += delta_lat
             state["longitude"] += delta_lon
 
-            state["altitude"] = max(20, min(300, state["altitude"] + random.uniform(-2, 2)))
-            state["speed"] = max(5, min(25, state["speed"] + random.uniform(-1, 1)))
-            state["battery_level"] = max(5, state["battery_level"] - random.uniform(0.01, 0.05))
+            state["altitude"] = max(40.0, min(300.0, round(state["altitude"] + random.uniform(-1.5, 1.5), 1)))
+            state["speed"] = max(8.0, min(25.0, round(state["speed"] + random.uniform(-0.8, 0.8), 1)))
+            state["battery_level"] = max(5.0, round(state["battery_level"] - random.uniform(0.01, 0.03), 1))
+        else:
+            # Grounded in hangar / maintenance pad
+            state["altitude"] = 0.0
+            state["speed"] = 0.0
 
-        state["temperature"] = max(18, min(42, state["temperature"] + random.uniform(-0.3, 0.3)))
-        state["gps_signal"] = max(75, min(100, state["gps_signal"] + random.uniform(-1, 1)))
+        state["temperature"] = max(18.0, min(42.0, round(state.get("temperature", 22.0) + random.uniform(-0.2, 0.2), 1)))
+        state["gps_signal"] = max(80.0, min(100.0, round(state.get("gps_signal", 98.0) + random.uniform(-0.5, 0.5), 1)))
 
-        return {
+        data_dict = {
             "drone_id": drone_key,
             "drone_name": drone.get("drone_name", "Drone"),
+            "model": drone.get("model", ""),
+            "status": status,
             "latitude": round(state["latitude"], 6),
             "longitude": round(state["longitude"], 6),
             "altitude": round(state["altitude"], 1),
@@ -235,6 +303,8 @@ class TelemetrySimulator:
             "connection_status": "connected" if status != "offline" else "disconnected",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+        self._drone_states[drone_key] = data_dict
+        return data_dict
 
 
 # Global singleton instance
