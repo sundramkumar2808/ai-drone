@@ -41,7 +41,7 @@ async def get_all_latest_telemetry(db: Any) -> List[dict]:
 
     latest_list = []
     for d in drones:
-        drone_id = str(d.get("id"))
+        drone_id = str(d.get("id") or d.get("_id"))
         status = d.get("status", "available")
         is_flying = status in ["in_flight", "active"]
 
@@ -153,12 +153,65 @@ class TelemetrySimulator:
             return self._generate_telemetry(drone)
         return None
 
+    def sync_from_drone_update(self, drone_id: str, drone: dict, alt_id: Optional[str] = None):
+        """Immediately synchronize simulated state with updated drone data from Fleet Management."""
+        keys = {str(drone_id)}
+        if alt_id:
+            keys.add(str(alt_id))
+        if drone.get("id"):
+            keys.add(str(drone["id"]))
+        if drone.get("_id"):
+            keys.add(str(drone["_id"]))
+
+        new_status = drone.get("status", "available")
+        is_flying = new_status in ["in_flight", "active"]
+        new_battery = float(drone.get("battery_percentage") if drone.get("battery_percentage") is not None else 100.0)
+
+        matched_states = []
+        for k in keys:
+            if k in self._drone_states:
+                matched_states.append(self._drone_states[k])
+        for st in self._drone_states.values():
+            if (
+                str(st.get("drone_id")) in keys
+                or str(st.get("id")) in keys
+                or str(st.get("_id")) in keys
+                or (drone.get("drone_name") and st.get("drone_name") == drone.get("drone_name"))
+            ):
+                if st not in matched_states:
+                    matched_states.append(st)
+
+        if not matched_states:
+            state = self._generate_telemetry(drone)
+            self._drone_states[str(drone_id)] = state
+            matched_states = [state]
+
+        for state in matched_states:
+            state["status"] = new_status
+            state["battery_level"] = round(new_battery, 1)
+            state["drone_name"] = drone.get("drone_name", state.get("drone_name", "Drone"))
+            state["model"] = drone.get("model", state.get("model", ""))
+            if is_flying:
+                if state.get("altitude", 0.0) <= 0.0:
+                    state["altitude"] = round(random.uniform(105.0, 145.0), 1)
+                if state.get("speed", 0.0) <= 0.0:
+                    state["speed"] = round(random.uniform(12.0, 17.5), 1)
+            else:
+                state["altitude"] = 0.0
+                state["speed"] = 0.0
+
     def notify_drone_status_change(self, drone_id: str, new_status: str):
         """Immediately update simulated state when a drone's status changes."""
         key = str(drone_id)
         is_flying = new_status in ["in_flight", "active"]
+        matched_states = []
         if key in self._drone_states:
-            state = self._drone_states[key]
+            matched_states.append(self._drone_states[key])
+        for st in self._drone_states.values():
+            if str(st.get("drone_id")) == key or str(st.get("id")) == key or str(st.get("_id")) == key:
+                if st not in matched_states:
+                    matched_states.append(st)
+        for state in matched_states:
             state["status"] = new_status
             if is_flying:
                 if state.get("altitude", 0.0) <= 0.0:
@@ -172,8 +225,16 @@ class TelemetrySimulator:
     def notify_drone_battery_change(self, drone_id: str, new_battery: float):
         """Immediately update simulated battery level when drone battery is modified."""
         key = str(drone_id)
+        bat_flt = round(float(new_battery), 1)
+        matched_states = []
         if key in self._drone_states:
-            self._drone_states[key]["battery_level"] = round(float(new_battery), 1)
+            matched_states.append(self._drone_states[key])
+        for st in self._drone_states.values():
+            if str(st.get("drone_id")) == key or str(st.get("id")) == key or str(st.get("_id")) == key:
+                if st not in matched_states:
+                    matched_states.append(st)
+        for state in matched_states:
+            state["battery_level"] = bat_flt
 
     def start(self, db_getter):
         """Start the telemetry background loop."""
@@ -209,7 +270,7 @@ class TelemetrySimulator:
                         data = self._generate_telemetry(drone)
                         telemetry_batch.append(data)
 
-                        drone_id = str(drone.get("id"))
+                        drone_id = str(drone.get("id") or drone.get("_id"))
                         status = drone.get("status", "available")
                         is_flying = status in ["in_flight", "active"]
 
@@ -263,7 +324,7 @@ class TelemetrySimulator:
 
     def _generate_telemetry(self, drone: dict) -> dict:
         """Generate realistic telemetry for a single drone."""
-        drone_key = str(drone.get("id"))
+        drone_key = str(drone.get("id") or drone.get("_id"))
         state = self._drone_states.get(drone_key)
         status = drone.get("status", "available")
         is_flying = status in ["in_flight", "active"]

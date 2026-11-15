@@ -35,9 +35,14 @@ async def get_drones(
 
 async def get_drone(db: Any, drone_id: Any) -> Optional[Drone]:
     """Get a single drone by ID."""
-    doc = await db.drones.find_one({"id": str(drone_id)})
+    sid = str(drone_id)
+    doc = await db.drones.find_one({"$or": [{"id": sid}, {"_id": sid}]})
     if not doc:
-        doc = await db.drones.find_one({"_id": str(drone_id)})
+        try:
+            from bson import ObjectId
+            doc = await db.drones.find_one({"_id": ObjectId(sid)})
+        except Exception:
+            pass
     return Drone(doc) if doc else None
 
 
@@ -84,50 +89,44 @@ async def update_drone(
     update_dict["updated_at"] = datetime.now(timezone.utc)
 
     drone_str_id = str(target.id)
-    await db.drones.update_one(
-        {"$or": [{"id": drone_str_id}, {"_id": drone_str_id}]},
-        {"$set": update_dict}
-    )
+    sid = str(drone_id)
+    query_or = [{"id": drone_str_id}, {"_id": drone_str_id}, {"id": sid}, {"_id": sid}]
+    try:
+        from bson import ObjectId
+        query_or.append({"_id": ObjectId(drone_str_id)})
+        query_or.append({"_id": ObjectId(sid)})
+    except Exception:
+        pass
+
+    await db.drones.update_one({"$or": query_or}, {"$set": update_dict})
     target.update(update_dict)
 
     # Immediately synchronize with telemetry simulator and db.telemetry
     try:
         from app.services.telemetry_service import telemetry_simulator
 
-        # 1. Sync Status
-        new_status = update_dict.get("status")
-        if new_status:
-            telemetry_simulator.notify_drone_status_change(drone_str_id, new_status)
+        # Update simulator's live state directly from the updated target
+        telemetry_simulator.sync_from_drone_update(drone_str_id, target, sid)
 
-            is_flying = new_status in ["in_flight", "active"]
-            alt = 125.0 if is_flying else 0.0
-            spd = 14.5 if is_flying else 0.0
-            await db.telemetry.update_one(
-                {"drone_id": drone_str_id},
-                {"$set": {
-                    "drone_id": drone_str_id,
-                    "status": new_status,
-                    "altitude": alt,
-                    "speed": spd,
-                    "timestamp": datetime.now(timezone.utc),
-                }},
-                upsert=True
-            )
+        # Update db.telemetry
+        new_status = update_dict.get("status") or target.get("status", "available")
+        new_battery = update_dict.get("battery_percentage") if update_dict.get("battery_percentage") is not None else target.get("battery_percentage", 100.0)
+        is_flying = new_status in ["in_flight", "active"]
+        alt = 125.0 if is_flying else 0.0
+        spd = 14.5 if is_flying else 0.0
 
-        # 2. Sync Battery Percentage
-        new_battery = update_dict.get("battery_percentage")
-        if new_battery is not None:
-            bat_flt = round(float(new_battery), 1)
-            telemetry_simulator.notify_drone_battery_change(drone_str_id, bat_flt)
-            await db.telemetry.update_one(
-                {"drone_id": drone_str_id},
-                {"$set": {
-                    "drone_id": drone_str_id,
-                    "battery_level": bat_flt,
-                    "timestamp": datetime.now(timezone.utc),
-                }},
-                upsert=True
-            )
+        await db.telemetry.update_one(
+            {"$or": [{"drone_id": drone_str_id}, {"drone_id": sid}]},
+            {"$set": {
+                "drone_id": drone_str_id,
+                "status": new_status,
+                "battery_level": float(new_battery),
+                "altitude": alt,
+                "speed": spd,
+                "timestamp": datetime.now(timezone.utc),
+            }},
+            upsert=True
+        )
     except Exception:
         pass
 

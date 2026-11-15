@@ -131,7 +131,8 @@ const DronesPage = () => {
     e.preventDefault();
     setFormSubmitting(true);
     try {
-      await droneService.updateDrone(selectedDrone.id, formData);
+      const droneId = selectedDrone.id || selectedDrone._id;
+      await droneService.updateDrone(droneId, formData);
       setIsEditModalOpen(false);
       fetchDrones();
     } catch (err) {
